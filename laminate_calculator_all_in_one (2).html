@@ -1,0 +1,1980 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Калькулятор укладки ламината</title>
+<script src="plotly-latest.min.js"></script>
+<script src="react.development.js"></script>
+<script src="react-dom.development.js"></script>
+<script src="babel.min.js"></script>
+<style>
+    body { font-family: sans-serif; margin: 0; padding: 0; }
+    .tabs { display: flex; border-bottom: 2px solid #ccc; background: #f8f8f8; }
+    .tabs button {
+      padding: 10px 20px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      font-size: 16px;
+    }
+    .tabs button.active { border-bottom-color: #007bff; font-weight: bold; }
+    .tab-content { display: none; padding: 20px; }
+    .tab-content.active { display: block; }
+
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    label {
+      display: block;
+      margin: 8px 0;
+    }
+    input {
+      margin-left: 8px;
+      width: 80px;
+    }
+    #plot {
+      width: 100%;
+      height: 400px;
+      max-width: 100%;
+    }
+    #results {
+      margin-top: 20px;
+    }
+    @media (max-width: 600px) {
+      input {
+        width: 100%;
+        margin-top: 4px;
+      }
+      label {
+        font-size: 14px;
+      }
+    }
+.cls-1 {fill: #3f4f75;} .cls-2 {fill: #80cfbe;} .cls-3 {fill: #fff;}
+#plotlyTab body { margin:0; }
+</style>
+</head>
+<body>
+<div class="tabs">
+<button class="active" onclick="showTab('plotlyTab', this)">Простой калькулятор</button>
+<button onclick="showTab('reactTab', this)">Инженерный редактор</button>
+<button onclick="showTab('frenchTab', this)">Французская укладка</button>
+</div>
+<div class="tab-content active" id="plotlyTab">
+<h1>Калькулятор коллекций FLOOREO PEAKS и FLOOREO WATERFALLS</h1>
+<label>Ширина комнаты (мм): <input id="width" step="50" type="number" value="4000"/></label>
+<label>Длина комнаты (мм): <input id="height" step="50" type="number" value="5000"/></label>
+<label>Добавить ряд по ширине: <input id="widthMargin" step="1" type="number" value="6"/></label>
+<label>Добавить ряд по длине: <input id="heightMargin" step="1" type="number" value="2"/></label>
+<label>Смещение укладки по X (мм): <input id="offsetX" step="10" type="number" value="0"/></label>
+<label>Смещение укладки по Y (мм): <input id="offsetY" step="10" type="number" value="300"/></label>
+<label>Поворот укладки (градусы): <input id="roomRotation" max="180" min="-180" step="1" type="number" value="0"/></label>
+<div id="plot"></div>
+<div id="results"></div>
+</div>
+<div class="tab-content" id="reactTab">
+<div id="react-root"></div>
+</div>
+<div class="tab-content" id="frenchTab">
+<div id="french-root"></div>
+</div>
+<script>
+     function showTab(id, btn) {
+      document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.tabs button').forEach(button => button.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      btn.classList.add('active');
+    }
+</script>
+  <script>
+    const plankLength = 694;
+    const plankWidth = 132;
+    const patternWidth = plankLength;
+    const patternHeight = plankLength + plankWidth;
+    const angle = 45 * Math.PI / 180;
+
+function drawRoom(usableW, usableH, fullW, fullH, stepX, stepY, startX, startY, offsetXuser, offsetYuser, roomRotDeg) {
+  const plankShapes = [];
+  let totalCount = 0;
+  let insideRoomCount = 0;
+
+  const shiftX = offsetXuser || 0;
+  const shiftY = offsetYuser || 0;
+  const roomX = startX;
+  const roomY = startY;
+
+  const roomCx = roomX + fullW / 2;
+  const roomCy = roomY + fullH / 2;
+  const rad = roomRotDeg * Math.PI / 180;
+
+  const maskDeltaW = (fullW - usableW) / 2;
+  const maskDeltaH = (fullH - usableH) / 2;
+  const maskX = roomX + maskDeltaW;
+  const maskY = roomY + maskDeltaH;
+  const maskW = usableW;
+  const maskH = usableH;
+
+  const virtualX0 = roomX - 1000;
+  const virtualY0 = roomY - 1000;
+  const virtualX1 = roomX + fullW + 1000;
+  const virtualY1 = roomY + fullH;
+
+  const cols = Math.ceil((virtualX1 - virtualX0) / stepX) + 2;
+  const rows = Math.ceil((virtualY1 - virtualY0) / stepY) + 2;
+
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const cx = i * stepX + virtualX0 + shiftX;
+      const cy = j * stepY + virtualY0 + shiftY;
+
+      const plankSet = [
+        { x: cx - patternWidth / 2, y: cy - patternHeight / 2, w: plankLength, h: plankWidth, baseColor: "saddlebrown" },
+        { x: cx - patternWidth / 2 + (patternWidth - plankWidth), y: cy - patternHeight / 2 + plankWidth, w: plankWidth, h: plankLength, baseColor: "peru" }
+      ];
+
+      for (const { x, y, w, h, baseColor } of plankSet) {
+        const coords = rotateRect(x, y, w, h, cx, cy, angle);
+        const isInsideMask = isFullyInsideRotatedRoom(coords, maskX, maskY, maskW, maskH, roomCx, roomCy, rad);
+        const isInsideRoom = isFullyInsideRotatedRoom(coords, roomX, roomY, fullW, fullH, roomCx, roomCy, rad);
+        const rotatedCoords = coords.map(([px, py]) => rotatePoint(px, py, roomCx, roomCy, rad));
+
+        plankShapes.push({
+          type: "path",
+          path: `M${rotatedCoords.map(p => p.join(",")).join("L")}Z`,
+          fillcolor: isInsideMask ? baseColor : "rgba(0,0,0,0)",
+          line: {
+            width: 0.5,
+            color: isInsideMask ? "black" : "gray",
+            dash: isInsideMask ? "solid" : "dot"
+          }
+        });
+
+        if (isInsideMask) totalCount++;
+        if (isInsideRoom) insideRoomCount++;
+      }
+    }
+  }
+
+  const roomRect = rotateRect(roomX, roomY, fullW, fullH, roomCx, roomCy, -rad)
+    .map(([x, y]) => rotatePoint(x, y, roomCx, roomCy, rad));
+
+  const outline = {
+    type: "path",
+    path: `M${roomRect.map(p => p.join(",")).join("L")}Z`,
+    line: { color: "black", width: 2 },
+    fillcolor: "rgba(0,0,0,0)"
+  };
+
+  return { shapes: [...plankShapes, outline], totalCount, insideRoomCount };
+}
+
+function rotatePoint(x, y, cx, cy, ang) {
+  const dx = x - cx;
+  const dy = y - cy;
+  const rx = cx + dx * Math.cos(ang) - dy * Math.sin(ang);
+  const ry = cy + dx * Math.sin(ang) + dy * Math.cos(ang);
+  return [rx, ry];
+}
+
+function isFullyInsideRotatedRoom(coords, roomX, roomY, roomW, roomH, cx, cy, rad) {
+  return coords
+    .map(([x, y]) => rotatePoint(x, y, cx, cy, rad))
+    .every(([x, y]) => x >= roomX && x <= roomX + roomW && y >= roomY && y <= roomY + roomH);
+}
+
+function rotateRect(x, y, w, h, cx, cy, ang) {
+  const corners = [[x, y], [x+w, y], [x+w, y+h], [x, y+h]];
+  return corners.map(([px, py]) => {
+    const dx = px - cx;
+    const dy = py - cy;
+    const rx = cx + dx * Math.cos(ang) - dy * Math.sin(ang);
+    const ry = cy + dx * Math.sin(ang) + dy * Math.cos(ang);
+    return [rx, ry];
+  });
+}
+
+function calculate() {
+  const width = parseFloat(document.getElementById("width").value);
+  const height = parseFloat(document.getElementById("height").value);
+  const widthMargin = 100*parseFloat(document.getElementById("widthMargin").value) || 0;
+  const heightMargin = 200*parseFloat(document.getElementById("heightMargin").value) || 0;
+  const offsetX = parseFloat(document.getElementById("offsetX").value) || 0;
+  const offsetY = parseFloat(document.getElementById("offsetY").value) || 0;
+  const roomRotation = parseFloat(document.getElementById("roomRotation").value) || 0;
+
+  const usableWidth = width + widthMargin;
+  const usableHeight = height + heightMargin;
+
+  const stepX = plankWidth * Math.sqrt(2);
+  const stepY = plankLength * Math.sqrt(2);
+  const startX = - stepX * 2;
+  const startY = - stepY * 2;
+
+  const { shapes, totalCount, insideRoomCount } = drawRoom(usableWidth, usableHeight, width, height, stepX, stepY, startX, startY, offsetX, offsetY, roomRotation);
+
+  const areaRoom = width * height / 1000000;
+  const full = insideRoomCount;
+  const cut = totalCount - insideRoomCount;
+  const count = totalCount;
+  const peaksBoxes = Math.ceil(count / 12);
+  const waterfallsBoxes = Math.ceil(count / 15);
+
+  document.getElementById("results").innerHTML = `
+    <p>Количество досок: <b>${count}</b></p>
+    <p>Из них целых: <b>${full}</b>, обрезанных: <b>${cut}</b></p>
+    <p>Площадь комнаты: <b>${areaRoom.toFixed(2)} м²</b></p>
+    <p><b>Коллекция PEAKS: ${peaksBoxes} уп.</b> (${Math.round(peaksBoxes*1.10*100)/100} м²)</p>
+    <p><b>Коллекция WATERFALLS: ${waterfallsBoxes} уп.</b> (${Math.round(waterfallsBoxes*1.374*100)/100} м²)</p>
+  `;
+
+  Plotly.react("plot", [{
+    type: "scatter",
+    x: [0], y: [0], mode: "markers", marker: {opacity: 0}
+  }], {
+    margin: {t: 0, l: 0, r: 0, b: 0},
+    xaxis: {
+      visible: false,
+      scaleanchor: "y",
+      range: (window.prevXRange || undefined)
+    },
+    yaxis: {
+      visible: false,
+      range: (window.prevYRange || undefined)
+    },
+    shapes
+  }).then(gd => {
+    const layout = gd.layout;
+    window.prevXRange = layout.xaxis.range;
+    window.prevYRange = layout.yaxis.range;
+
+    gd.on('plotly_relayout', ev => {
+      const layout = gd.layout;
+
+      if (ev['xaxis.range[0]'] && ev['xaxis.range[1]']) {
+        window.prevXRange = [ev['xaxis.range[0]'], ev['xaxis.range[1]']];
+      } else if (ev['xaxis.autorange']) {
+        window.prevXRange = layout.xaxis.range;
+      }
+
+      if (ev['yaxis.range[0]'] && ev['yaxis.range[1]']) {
+        window.prevYRange = [ev['yaxis.range[0]'], ev['yaxis.range[1]']];
+      } else if (ev['yaxis.autorange']) {
+        window.prevYRange = layout.yaxis.range;
+      }
+    });
+  });
+}
+
+  document.querySelectorAll("input").forEach(input => input.addEventListener("input", calculate));
+  calculate();
+  </script>
+<script type="text/babel">
+     const { useState, useRef, useMemo, useEffect } = React;
+
+    function FloorPlanner() {
+      const [points, setPoints] = useState([]);
+      const [isClosed, setIsClosed] = useState(false);
+      const [tileSize] = useState(694);
+      const [tileWidth] = useState(132);
+      const [mousePos, setMousePos] = useState(null);
+      const svgRef = useRef(null);
+      const [toggledPlanks, setToggledPlanks] = useState(new Set());
+      const [layoutRotation, setLayoutRotation] = useState(0);
+      const viewportWidth = 800;
+      const viewportHeight = 600;
+      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
+      const [viewBox, setViewBox] = useState(defaultViewBox);
+
+      function getSvgCoordinates(e) {
+        const svg = svgRef.current;
+        const point = svg.createSVGPoint();
+        point.x = e.clientX;
+        point.y = e.clientY;
+        const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
+        return { x: transformed.x, y: transformed.y };
+      }
+
+      function handleClick(e) {
+        if (isClosed) return;
+        const { x, y } = getSvgCoordinates(e);
+        setPoints([...points, { x, y }]);
+      }
+
+      function handleMouseMove(e) {
+        if (isClosed) return;
+        setMousePos(getSvgCoordinates(e));
+      }
+
+      function closePolygon() {
+        if (points.length >= 3) setIsClosed(true);
+      }
+
+      function undoLastPoint() {
+        if (isClosed || points.length === 0) return;
+        setPoints(points.slice(0, -1));
+      }
+
+      function reset() {
+        setPoints([]);
+        setIsClosed(false);
+        setMousePos(null);
+        setToggledPlanks(new Set());
+        setLayoutRotation(0);
+        setViewBox(defaultViewBox);
+      }
+
+      function polygonArea(pts) {
+        let area = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const j = (i + 1) % pts.length;
+          area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+        }
+        return Math.abs(area / 2);
+      }
+
+      function rotatePolygon(pts, degrees) {
+        if (!pts.length || degrees === 0) return pts;
+
+        const xs = pts.map(p => p.x);
+        const ys = pts.map(p => p.y);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const rad = (degrees * Math.PI) / 180;
+
+        return pts.map(p => {
+          const dx = p.x - cx;
+          const dy = p.y - cy;
+          return {
+            x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+
+      const rotatedPoints = points;
+      const rotationCenter = useMemo(() => {
+        if (!points.length) return { x: 0, y: 0 };
+        const xs = points.map(point => point.x);
+        const ys = points.map(point => point.y);
+        return {
+          x: (Math.min(...xs) + Math.max(...xs)) / 2,
+          y: (Math.min(...ys) + Math.max(...ys)) / 2
+        };
+      }, [points]);
+
+      function rotatePatternPolygon(pts) {
+        if (!pts.length || layoutRotation === 0 || !points.length) return pts;
+        const rad = (layoutRotation * Math.PI) / 180;
+        return pts.map(point => {
+          const dx = point.x - rotationCenter.x;
+          const dy = point.y - rotationCenter.y;
+          return {
+            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+
+      useEffect(() => {
+        if (isClosed) {
+          setToggledPlanks(new Set());
+        }
+      }, [layoutRotation, isClosed]);
+
+      const area = isClosed ? polygonArea(rotatedPoints) : 0;
+      const areaM2 = (area / 1_000_000).toFixed(2);
+      let planksNeeded = 0, fullPlanks = 0, cutPlanks = 0;
+      const lastPoint = points[points.length - 1];
+      let hintText = "";
+      if (lastPoint && mousePos && !isClosed) {
+        const dx = mousePos.x - lastPoint.x;
+        const dy = mousePos.y - lastPoint.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+        hintText = `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
+      }
+
+      const pattern = [];
+      const isPointInPolygon = (point, polygon) => {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = polygon[i].x, yi = polygon[i].y;
+          const xj = polygon[j].x, yj = polygon[j].y;
+          const intersect = ((yi > point.y) !== (yj > point.y)) &&
+            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+      const getPolygonBounds = (polygon) => {
+        const xs = polygon.map(point => point.x);
+        const ys = polygon.map(point => point.y);
+        return {
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minY: Math.min(...ys),
+          maxY: Math.max(...ys)
+        };
+      };
+      function buildFittedViewBox(sourcePoints) {
+        if (!sourcePoints.length) {
+          return defaultViewBox;
+        }
+
+        const xs = sourcePoints.map(p => p.x);
+        const ys = sourcePoints.map(p => p.y);
+        const rawMinX = Math.min(...xs);
+        const rawMaxX = Math.max(...xs);
+        const rawMinY = Math.min(...ys);
+        const rawMaxY = Math.max(...ys);
+        const padding = 500;
+
+        let minX = rawMinX - padding;
+        let maxX = rawMaxX + padding;
+        let minY = rawMinY - padding;
+        let maxY = rawMaxY + padding;
+
+        let width = Math.max(maxX - minX, 1000);
+        let height = Math.max(maxY - minY, 1000);
+        const viewportAspect = viewportWidth / viewportHeight;
+        const contentAspect = width / height;
+
+        if (contentAspect > viewportAspect) {
+          const adjustedHeight = width / viewportAspect;
+          const extraHeight = adjustedHeight - height;
+          minY -= extraHeight / 2;
+          height = adjustedHeight;
+        } else {
+          const adjustedWidth = height * viewportAspect;
+          const extraWidth = adjustedWidth - width;
+          minX -= extraWidth / 2;
+          width = adjustedWidth;
+        }
+
+        return { minX, minY, width, height };
+      }
+
+      useEffect(() => {
+        if (!isClosed) return;
+        setViewBox(buildFittedViewBox(rotatedPoints));
+      }, [layoutRotation]);
+
+      const gridLines = useMemo(() => {
+        const step = 100;
+        const startX = Math.floor(viewBox.minX / step) * step;
+        const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
+        const startY = Math.floor(viewBox.minY / step) * step;
+        const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
+        const vertical = [];
+        const horizontal = [];
+
+        for (let x = startX; x <= endX; x += step) {
+          vertical.push(x);
+        }
+
+        for (let y = startY; y <= endY; y += step) {
+          horizontal.push(y);
+        }
+
+        return { vertical, horizontal, startX, endX, startY, endY };
+      }, [viewBox]);
+
+      if (isClosed) {
+	const stepX = Math.SQRT2 * tileWidth;
+	const stepY = tileSize  / Math.SQRT2;
+        const minX = Math.min(...rotatedPoints.map(p => p.x)) - 650;
+        const maxX = Math.max(...rotatedPoints.map(p => p.x)) + 650;
+        const centerY = (Math.min(...rotatedPoints.map(p => p.y)) + Math.max(...rotatedPoints.map(p => p.y))) / 2;
+
+        for (let rowIndex = -20; rowIndex <= 20; rowIndex++) {
+		const shiftX = rowIndex % 2 !== 0 ? stepX / 2 : 0;
+		const shiftY = 0;
+          const angle = rowIndex % 2 === 0 ? 45 : -45;
+          const cy = centerY + rowIndex * stepY;
+
+          for (let x = minX; x < maxX; x += stepX) {
+            const cx = x + shiftX;
+            const corners = [
+              { x: cx - tileSize / 2, y: cy - tileWidth / 2 },
+              { x: cx + tileSize / 2, y: cy - tileWidth / 2 },
+              { x: cx + tileSize / 2, y: cy + tileWidth / 2 },
+              { x: cx - tileSize / 2, y: cy + tileWidth / 2 },
+            ].map(p => {
+              const rad = (angle * Math.PI) / 180;
+              const dx = p.x - cx;
+              const dy = p.y - cy;
+              return {
+                x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+                y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+              };
+            });
+
+            const isInside = corners.some(c => isPointInPolygon(c, rotatedPoints));
+            const key = `${rowIndex}-${x}`;
+            const manuallyToggled = toggledPlanks.has(key);
+            const finalVisible = manuallyToggled ? !isInside : isInside;
+
+            if (finalVisible) {
+              planksNeeded++;
+              const allInside = corners.every(c => isPointInPolygon(c, rotatedPoints));
+              if (allInside) fullPlanks++;
+              else cutPlanks++;
+            }
+
+            const fillColor = manuallyToggled
+              ? "lightgray"
+              : isInside
+                ? (angle === 45 ? "#deb887" : "#a1866f")
+                : "#ffffff";
+
+            const strokeColor = finalVisible ? "#555" : "gray";
+            const dash = finalVisible ? "" : "20,20";
+
+            pattern.push(
+              <rect
+                key={`plank-${rowIndex}-${x}`}
+                x={cx - tileSize / 2}
+                y={cy - tileWidth / 2}
+                width={tileSize}
+                height={tileWidth}
+                transform={`rotate(${angle} ${cx} ${cy})`}
+                fill={fillColor}
+                stroke={strokeColor}
+                strokeWidth={10}
+                strokeDasharray={dash}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setToggledPlanks(prev => {
+                    const newSet = new Set(prev);
+                    const key = `${rowIndex}-${x}`;
+                    if (newSet.has(key)) newSet.delete(key);
+                    else newSet.add(key);
+                    return newSet;
+                  });
+                }}
+              />
+            );
+          }
+        }
+      }
+
+      return (
+        <div className="p-4">
+          <h1 className="text-xl font-bold mb-2">Инженерный редактор укладки</h1>
+          <div className="flex gap-4 mb-2">
+            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
+            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
+            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
+            <label className="flex items-center gap-2">
+              Поворот укладки:
+              <input
+                type="number"
+                min="-180"
+                max="180"
+                step="1"
+                value={layoutRotation}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
+              />
+              <span>°</span>
+            </label>
+            <div>Площадь: {areaM2} м²</div>
+            <div>Досок: {planksNeeded} (целых: {fullPlanks}, рез: {cutPlanks})</div>
+            <div>PEAKS: {Math.ceil(planksNeeded / 12)} уп. ({(Math.ceil(planksNeeded / 12) * 1.1).toFixed(3)} м²)</div>
+            <div>WATERFALLS: {Math.ceil(planksNeeded / 15)} уп. ({(Math.ceil(planksNeeded / 15) * 1.374).toFixed(3)} м²)</div>
+          </div>
+          {hintText && (
+            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
+          )}
+          <svg
+            ref={svgRef}
+            onClick={handleClick}
+            onMouseMove={handleMouseMove}
+            width={viewportWidth}
+            height={viewportHeight}
+            viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="border border-gray-400 bg-white cursor-crosshair"
+          >
+            <g>
+              {gridLines.vertical.map((x, i) => (
+                <line
+                  key={`v${i}`}
+                  x1={x}
+                  y1={gridLines.startY}
+                  x2={x}
+                  y2={gridLines.endY}
+                  stroke="#eee"
+                  strokeWidth={5}
+                />
+              ))}
+              {gridLines.horizontal.map((y, i) => (
+                <line
+                  key={`h${i}`}
+                  x1={gridLines.startX}
+                  y1={y}
+                  x2={gridLines.endX}
+                  y2={y}
+                  stroke="#eee"
+                  strokeWidth={10}
+                />
+              ))}
+              {pattern}
+              {rotatedPoints.map((p, i) => (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r={20} fill="red" />
+                  <text x={p.x + 30} y={p.y - 30} fontSize={120} fill="black">{i + 1}</text>
+                </g>
+              ))}
+              {rotatedPoints.map((p, i) => {
+                const next = rotatedPoints[(i + 1) % rotatedPoints.length];
+                if (i === points.length - 1 && !isClosed) return null;
+                return <line key={i} x1={p.x} y1={p.y} x2={next.x} y2={next.y} stroke="black" strokeWidth={10} />;
+              })}
+              {lastPoint && mousePos && !isClosed && (
+                <line
+                  x1={lastPoint.x}
+                  y1={lastPoint.y}
+                  x2={mousePos.x}
+                  y2={mousePos.y}
+                  stroke="orange"
+                  strokeWidth={10}
+                  strokeDasharray="10,10"
+                />
+              )}
+            </g>
+          </svg>
+        </div>
+      );
+    }
+
+    function FrenchHerringbonePlanner({ roomState }) {
+      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox } = roomState;
+      const [tileSize] = useState(620);
+      const [tileWidth] = useState(132);
+      const svgRef = useRef(null);
+      const [toggledPlanks, setToggledPlanks] = useState(new Set());
+      const viewportWidth = 800;
+      const viewportHeight = 600;
+      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
+
+      function getSvgCoordinates(e) {
+        const svg = svgRef.current;
+        const point = svg.createSVGPoint();
+        point.x = e.clientX;
+        point.y = e.clientY;
+        const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
+        return { x: transformed.x, y: transformed.y };
+      }
+
+      function handleClick(e) {
+        if (isClosed) return;
+        const { x, y } = getSvgCoordinates(e);
+        setPoints([...points, { x, y }]);
+      }
+
+      function handleMouseMove(e) {
+        if (isClosed) return;
+        setMousePos(getSvgCoordinates(e));
+      }
+
+      function closePolygon() {
+        if (points.length >= 3) setIsClosed(true);
+      }
+
+      function undoLastPoint() {
+        if (isClosed || points.length === 0) return;
+        setPoints(points.slice(0, -1));
+      }
+
+      function reset() {
+        setPoints([]);
+        setIsClosed(false);
+        setMousePos(null);
+        setToggledPlanks(new Set());
+        setLayoutRotation(0);
+        setLayoutOffsetX(0);
+        setLayoutOffsetY(0);
+        setViewBox(defaultViewBox);
+      }
+
+      function polygonArea(pts) {
+        let area = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const j = (i + 1) % pts.length;
+          area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+        }
+        return Math.abs(area / 2);
+      }
+
+      function rotatePolygon(pts, degrees) {
+        if (!pts.length || degrees === 0) return pts;
+
+        const xs = pts.map(p => p.x);
+        const ys = pts.map(p => p.y);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const rad = (degrees * Math.PI) / 180;
+
+        return pts.map(p => {
+          const dx = p.x - cx;
+          const dy = p.y - cy;
+          return {
+            x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+
+      const rotatedPoints = points;
+      const rotationCenter = useMemo(() => {
+        if (!points.length) return { x: 0, y: 0 };
+        const xs = points.map(point => point.x);
+        const ys = points.map(point => point.y);
+        return {
+          x: (Math.min(...xs) + Math.max(...xs)) / 2,
+          y: (Math.min(...ys) + Math.max(...ys)) / 2
+        };
+      }, [points]);
+
+      function rotatePatternPolygon(pts) {
+        if (!pts.length || layoutRotation === 0 || !points.length) return pts;
+        const rad = (layoutRotation * Math.PI) / 180;
+        return pts.map(point => {
+          const dx = point.x - rotationCenter.x;
+          const dy = point.y - rotationCenter.y;
+          return {
+            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+      function transformPatternPolygon(pts) {
+        return rotatePatternPolygon(pts).map(point => ({
+          x: point.x + layoutOffsetX,
+          y: point.y + layoutOffsetY
+        }));
+      }
+
+      useEffect(() => {
+        if (isClosed) {
+          setToggledPlanks(new Set());
+        }
+      }, [layoutRotation, isClosed]);
+
+      const area = isClosed ? polygonArea(rotatedPoints) : 0;
+      const areaM2 = (area / 1_000_000).toFixed(2);
+      let planksNeeded = 0, fullPlanks = 0, cutPlanks = 0, aPlanks = 0, bPlanks = 0;
+      const lastPoint = points[points.length - 1];
+      let hintText = "";
+      if (lastPoint && mousePos && !isClosed) {
+        const dx = mousePos.x - lastPoint.x;
+        const dy = mousePos.y - lastPoint.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+        hintText = `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
+      }
+
+      const pattern = [];
+      const isPointInPolygon = (point, polygon) => {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = polygon[i].x, yi = polygon[i].y;
+          const xj = polygon[j].x, yj = polygon[j].y;
+          const intersect = ((yi > point.y) !== (yj > point.y)) &&
+            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+      const getPolygonBounds = (polygon) => {
+        const xs = polygon.map(point => point.x);
+        const ys = polygon.map(point => point.y);
+        return {
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minY: Math.min(...ys),
+          maxY: Math.max(...ys)
+        };
+      };
+
+      function buildFittedViewBox(sourcePoints) {
+        if (!sourcePoints.length) {
+          return defaultViewBox;
+        }
+
+        const xs = sourcePoints.map(p => p.x);
+        const ys = sourcePoints.map(p => p.y);
+        const rawMinX = Math.min(...xs);
+        const rawMaxX = Math.max(...xs);
+        const rawMinY = Math.min(...ys);
+        const rawMaxY = Math.max(...ys);
+        const padding = 500;
+
+        let minX = rawMinX - padding;
+        let maxX = rawMaxX + padding;
+        let minY = rawMinY - padding;
+        let maxY = rawMaxY + padding;
+
+        let width = Math.max(maxX - minX, 1000);
+        let height = Math.max(maxY - minY, 1000);
+        const viewportAspect = viewportWidth / viewportHeight;
+        const contentAspect = width / height;
+
+        if (contentAspect > viewportAspect) {
+          const adjustedHeight = width / viewportAspect;
+          const extraHeight = adjustedHeight - height;
+          minY -= extraHeight / 2;
+          height = adjustedHeight;
+        } else {
+          const adjustedWidth = height * viewportAspect;
+          const extraWidth = adjustedWidth - width;
+          minX -= extraWidth / 2;
+          width = adjustedWidth;
+        }
+
+        return { minX, minY, width, height };
+      }
+
+      useEffect(() => {
+        if (!isClosed) return;
+        setViewBox(buildFittedViewBox(rotatedPoints));
+      }, [layoutRotation]);
+
+      const gridLines = useMemo(() => {
+        const step = 100;
+        const startX = Math.floor(viewBox.minX / step) * step;
+        const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
+        const startY = Math.floor(viewBox.minY / step) * step;
+        const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
+        const vertical = [];
+        const horizontal = [];
+
+        for (let x = startX; x <= endX; x += step) vertical.push(x);
+        for (let y = startY; y <= endY; y += step) horizontal.push(y);
+
+        return { vertical, horizontal, startX, endX, startY, endY };
+      }, [viewBox]);
+
+      if (isClosed) {
+        const rowDx = tileSize / Math.SQRT2;
+        const rowDy = -tileSize / Math.SQRT2;
+        const colDx = tileWidth / Math.SQRT2;
+        const colDy = tileWidth / Math.SQRT2;
+        const shiftDx = tileWidth / Math.SQRT2;
+        const shiftDy = -tileWidth / Math.SQRT2;
+
+        const basisCoords = rotatedPoints.map(point => ({
+          i: (point.x + point.y) / (2 * colDx),
+          j: (point.x - point.y) / (2 * rowDx)
+        }));
+
+        const minI = Math.floor(Math.min(...basisCoords.map(point => point.i))) - 4;
+        const maxI = Math.ceil(Math.max(...basisCoords.map(point => point.i))) + 4;
+        const minJ = Math.floor(Math.min(...basisCoords.map(point => point.j))) - 4;
+        const maxJ = Math.ceil(Math.max(...basisCoords.map(point => point.j))) + 4;
+
+        for (let i = minI; i <= maxI; i++) {
+          const boardType = i % 2 === 0 ? "A" : "B";
+          const boardColor = boardType === "A" ? "#9a785f" : "#d5b07b";
+          const rowOffsetX = boardType === "A" ? 0 : shiftDx;
+          const rowOffsetY = boardType === "A" ? 0 : shiftDy;
+          const topShiftX = boardType === "A" ? shiftDx : -shiftDx;
+          const topShiftY = boardType === "A" ? shiftDy : -shiftDy;
+
+          for (let j = minJ; j <= maxJ; j++) {
+            const baseX = i * colDx + j * rowDx + rowOffsetX;
+            const baseY = i * colDy + j * rowDy + rowOffsetY;
+            const boardPoints = [
+              { x: baseX, y: baseY },
+              { x: baseX + rowDx, y: baseY + rowDy },
+              { x: baseX + rowDx + colDx + topShiftX, y: baseY + rowDy + colDy + topShiftY },
+              { x: baseX + colDx + topShiftX, y: baseY + colDy + topShiftY }
+            ];
+            const rotatedBoardPoints = transformPatternPolygon(boardPoints);
+            const key = `${boardType}-${i}-${j}`;
+            const isInside = rotatedBoardPoints.some(point => isPointInPolygon(point, rotatedPoints));
+            const manuallyToggled = toggledPlanks.has(key);
+            const finalVisible = manuallyToggled ? !isInside : isInside;
+
+            if (finalVisible) {
+              planksNeeded++;
+              if (boardType === "A") aPlanks++;
+              else bPlanks++;
+
+              const allInside = rotatedBoardPoints.every(point => isPointInPolygon(point, rotatedPoints));
+              if (allInside) fullPlanks++;
+              else cutPlanks++;
+            }
+
+            const fillColor = manuallyToggled
+              ? "lightgray"
+              : isInside
+                ? boardColor
+                : "#ffffff";
+
+            const strokeColor = finalVisible ? "#555" : "gray";
+            const dash = finalVisible ? "" : "20,20";
+
+            pattern.push(
+              <polygon
+                key={`french-${key}`}
+                points={rotatedBoardPoints.map(point => `${point.x},${point.y}`).join(" ")}
+                fill={fillColor}
+                stroke={strokeColor}
+                strokeWidth={10}
+                strokeDasharray={dash}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setToggledPlanks(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(key)) newSet.delete(key);
+                    else newSet.add(key);
+                    return newSet;
+                  });
+                }}
+              />
+            );
+          }
+        }
+      }
+
+      const aBoxes = Math.ceil(aPlanks / 12);
+      const bBoxes = Math.ceil(bPlanks / 12);
+
+      return (
+        <div className="p-4">
+          <h1 className="text-xl font-bold mb-2">Французская вариант 2</h1>
+          <div className="flex flex-wrap gap-4 mb-2">
+            <div>Площадь: {areaM2} м²</div>
+            <div>Досок: {planksNeeded} (A: {aPlanks}, B: {bPlanks})</div>
+            <div>Упаковок: A {aBoxes}, B {bBoxes}</div>
+            <div>Целых: {fullPlanks}, рез: {cutPlanks}</div>
+            <div>Доска: 620 x 132 мм, спил 45°</div>
+          </div>
+          {hintText && (
+            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <span>Угол:</span>
+              <input
+                type="number"
+                min="-180"
+                max="180"
+                step="1"
+                value={layoutRotation}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
+              />
+              <span>°</span>
+              <span>X:</span>
+              <input
+                type="number"
+                step="10"
+                value={layoutOffsetX}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
+              />
+              <span>Y:</span>
+              <input
+                type="number"
+                step="10"
+                value={layoutOffsetY}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
+              />
+            </div>
+            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
+            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
+            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
+          </div>
+          <svg
+            ref={svgRef}
+            onClick={handleClick}
+            onMouseMove={handleMouseMove}
+            width={viewportWidth}
+            height={viewportHeight}
+            viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="border border-gray-400 bg-white cursor-crosshair"
+          >
+            <g>
+              {gridLines.vertical.map((x, i) => (
+                <line
+                  key={`fv${i}`}
+                  x1={x}
+                  y1={gridLines.startY}
+                  x2={x}
+                  y2={gridLines.endY}
+                  stroke="#eee"
+                  strokeWidth={5}
+                />
+              ))}
+              {gridLines.horizontal.map((y, i) => (
+                <line
+                  key={`fh${i}`}
+                  x1={gridLines.startX}
+                  y1={y}
+                  x2={gridLines.endX}
+                  y2={y}
+                  stroke="#eee"
+                  strokeWidth={10}
+                />
+              ))}
+              {pattern}
+              {rotatedPoints.map((p, i) => (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r={20} fill="red" />
+                  <text x={p.x + 30} y={p.y - 30} fontSize={120} fill="black">{i + 1}</text>
+                </g>
+              ))}
+              {rotatedPoints.map((p, i) => {
+                const next = rotatedPoints[(i + 1) % rotatedPoints.length];
+                if (i === points.length - 1 && !isClosed) return null;
+                return <line key={i} x1={p.x} y1={p.y} x2={next.x} y2={next.y} stroke="black" strokeWidth={10} />;
+              })}
+              {lastPoint && mousePos && !isClosed && (
+                <line
+                  x1={lastPoint.x}
+                  y1={lastPoint.y}
+                  x2={mousePos.x}
+                  y2={mousePos.y}
+                  stroke="orange"
+                  strokeWidth={10}
+                  strokeDasharray="10,10"
+                />
+              )}
+            </g>
+          </svg>
+        </div>
+      );
+    }
+
+    function FrenchClassicPlanner({ roomState }) {
+      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox } = roomState;
+      const [tileSize] = useState(620);
+      const [tileWidth] = useState(132);
+      const svgRef = useRef(null);
+      const [toggledPlanks, setToggledPlanks] = useState(new Set());
+      const viewportWidth = 800;
+      const viewportHeight = 600;
+      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
+
+      function getSvgCoordinates(e) {
+        const svg = svgRef.current;
+        const point = svg.createSVGPoint();
+        point.x = e.clientX;
+        point.y = e.clientY;
+        const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
+        return { x: transformed.x, y: transformed.y };
+      }
+
+      function handleClick(e) {
+        if (isClosed) return;
+        const { x, y } = getSvgCoordinates(e);
+        setPoints([...points, { x, y }]);
+      }
+
+      function handleMouseMove(e) {
+        if (isClosed) return;
+        setMousePos(getSvgCoordinates(e));
+      }
+
+      function closePolygon() {
+        if (points.length >= 3) setIsClosed(true);
+      }
+
+      function undoLastPoint() {
+        if (isClosed || points.length === 0) return;
+        setPoints(points.slice(0, -1));
+      }
+
+      function reset() {
+        setPoints([]);
+        setIsClosed(false);
+        setMousePos(null);
+        setToggledPlanks(new Set());
+        setLayoutRotation(0);
+        setLayoutOffsetX(0);
+        setLayoutOffsetY(0);
+        setViewBox(defaultViewBox);
+      }
+
+      function polygonArea(pts) {
+        let area = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const j = (i + 1) % pts.length;
+          area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+        }
+        return Math.abs(area / 2);
+      }
+
+      function rotatePolygon(pts, degrees) {
+        if (!pts.length || degrees === 0) return pts;
+
+        const xs = pts.map(p => p.x);
+        const ys = pts.map(p => p.y);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const rad = (degrees * Math.PI) / 180;
+
+        return pts.map(p => {
+          const dx = p.x - cx;
+          const dy = p.y - cy;
+          return {
+            x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+
+      const rotatedPoints = points;
+      const rotationCenter = useMemo(() => {
+        if (!points.length) return { x: 0, y: 0 };
+        const xs = points.map(point => point.x);
+        const ys = points.map(point => point.y);
+        return {
+          x: (Math.min(...xs) + Math.max(...xs)) / 2,
+          y: (Math.min(...ys) + Math.max(...ys)) / 2
+        };
+      }, [points]);
+
+      function rotatePatternPolygon(pts) {
+        if (!pts.length || layoutRotation === 0 || !points.length) return pts;
+        const rad = (layoutRotation * Math.PI) / 180;
+        return pts.map(point => {
+          const dx = point.x - rotationCenter.x;
+          const dy = point.y - rotationCenter.y;
+          return {
+            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+      function transformPatternPolygon(pts) {
+        return rotatePatternPolygon(pts).map(point => ({
+          x: point.x + layoutOffsetX,
+          y: point.y + layoutOffsetY
+        }));
+      }
+
+      useEffect(() => {
+        if (isClosed) {
+          setToggledPlanks(new Set());
+        }
+      }, [layoutRotation, isClosed]);
+
+      const area = isClosed ? polygonArea(rotatedPoints) : 0;
+      const areaM2 = (area / 1_000_000).toFixed(2);
+      let planksNeeded = 0, fullPlanks = 0, cutPlanks = 0, aPlanks = 0, bPlanks = 0;
+      const lastPoint = points[points.length - 1];
+      let hintText = "";
+      if (lastPoint && mousePos && !isClosed) {
+        const dx = mousePos.x - lastPoint.x;
+        const dy = mousePos.y - lastPoint.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+        hintText = `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
+      }
+
+      const pattern = [];
+      const isPointInPolygon = (point, polygon) => {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = polygon[i].x, yi = polygon[i].y;
+          const xj = polygon[j].x, yj = polygon[j].y;
+          const intersect = ((yi > point.y) !== (yj > point.y)) &&
+            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+      const getPolygonBounds = (polygon) => {
+        const xs = polygon.map(point => point.x);
+        const ys = polygon.map(point => point.y);
+        return {
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minY: Math.min(...ys),
+          maxY: Math.max(...ys)
+        };
+      };
+
+      function buildFittedViewBox(sourcePoints) {
+        if (!sourcePoints.length) {
+          return defaultViewBox;
+        }
+
+        const xs = sourcePoints.map(p => p.x);
+        const ys = sourcePoints.map(p => p.y);
+        const rawMinX = Math.min(...xs);
+        const rawMaxX = Math.max(...xs);
+        const rawMinY = Math.min(...ys);
+        const rawMaxY = Math.max(...ys);
+        const padding = 500;
+
+        let minX = rawMinX - padding;
+        let maxX = rawMaxX + padding;
+        let minY = rawMinY - padding;
+        let maxY = rawMaxY + padding;
+
+        let width = Math.max(maxX - minX, 1000);
+        let height = Math.max(maxY - minY, 1000);
+        const viewportAspect = viewportWidth / viewportHeight;
+        const contentAspect = width / height;
+
+        if (contentAspect > viewportAspect) {
+          const adjustedHeight = width / viewportAspect;
+          const extraHeight = adjustedHeight - height;
+          minY -= extraHeight / 2;
+          height = adjustedHeight;
+        } else {
+          const adjustedWidth = height * viewportAspect;
+          const extraWidth = adjustedWidth - width;
+          minX -= extraWidth / 2;
+          width = adjustedWidth;
+        }
+
+        return { minX, minY, width, height };
+      }
+
+      useEffect(() => {
+        if (!isClosed) return;
+        setViewBox(buildFittedViewBox(rotatedPoints));
+      }, [layoutRotation]);
+
+      const gridLines = useMemo(() => {
+        const step = 100;
+        const startX = Math.floor(viewBox.minX / step) * step;
+        const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
+        const startY = Math.floor(viewBox.minY / step) * step;
+        const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
+        const vertical = [];
+        const horizontal = [];
+
+        for (let x = startX; x <= endX; x += step) vertical.push(x);
+        for (let y = startY; y <= endY; y += step) horizontal.push(y);
+
+        return { vertical, horizontal, startX, endX, startY, endY };
+      }, [viewBox]);
+
+      function rotateAndTranslate(localPoints, offsetX, offsetY, angleDeg) {
+        const rad = (angleDeg * Math.PI) / 180;
+        return localPoints.map(point => ({
+          x: offsetX + point.x * Math.cos(rad) - point.y * Math.sin(rad),
+          y: offsetY + point.x * Math.sin(rad) + point.y * Math.cos(rad)
+        }));
+      }
+
+      if (isClosed) {
+        const rotatedRoomX = rotatedPoints.map(point => point.x);
+        const rotatedRoomY = rotatedPoints.map(point => point.y);
+        const minRoomX = Math.min(...rotatedRoomX);
+        const maxRoomX = Math.max(...rotatedRoomX);
+        const minRoomY = Math.min(...rotatedRoomY);
+        const maxRoomY = Math.max(...rotatedRoomY);
+        const seamLength = tileWidth * Math.SQRT2;
+        const sideRun = tileSize / Math.SQRT2;
+        const moduleWidth = sideRun * 2;
+        const startSeam = Math.floor((minRoomX - moduleWidth * 2) / moduleWidth) * moduleWidth;
+        const endSeam = Math.ceil((maxRoomX + moduleWidth * 2) / moduleWidth) * moduleWidth;
+        const startSegment = Math.floor((minRoomY - sideRun * 2) / seamLength) - 4;
+        const endSegment = Math.ceil((maxRoomY + sideRun * 2) / seamLength) + 4;
+
+        for (let seamX = startSeam; seamX <= endSeam; seamX += moduleWidth) {
+          for (let segment = startSegment; segment <= endSegment; segment++) {
+            const y0 = segment * seamLength;
+            const boards = [
+              {
+                type: "A",
+                color: "#d5b07b",
+                key: `CA-${seamX}-${segment}`,
+                points: [
+                  { x: seamX, y: y0 },
+                  { x: seamX, y: y0 + seamLength },
+                  { x: seamX - sideRun, y: y0 + seamLength + sideRun },
+                  { x: seamX - sideRun, y: y0 + sideRun }
+                ]
+              },
+              {
+                type: "B",
+                color: "#9a785f",
+                key: `CB-${seamX}-${segment}`,
+                points: [
+                  { x: seamX, y: y0 },
+                  { x: seamX + sideRun, y: y0 + sideRun },
+                  { x: seamX + sideRun, y: y0 + seamLength + sideRun },
+                  { x: seamX, y: y0 + seamLength }
+                ]
+              }
+            ];
+
+            for (const board of boards) {
+              const currentBoard = {
+                ...board,
+                points: transformPatternPolygon(board.points)
+              };
+              const isInside = currentBoard.points.some(point => isPointInPolygon(point, rotatedPoints));
+              const manuallyToggled = toggledPlanks.has(board.key);
+              const finalVisible = manuallyToggled ? !isInside : isInside;
+
+              if (finalVisible) {
+                planksNeeded++;
+                if (board.type === "A") aPlanks++;
+                else bPlanks++;
+
+                const allInside = currentBoard.points.every(point => isPointInPolygon(point, rotatedPoints));
+                if (allInside) fullPlanks++;
+                else cutPlanks++;
+              }
+
+              const fillColor = manuallyToggled
+                ? "lightgray"
+                : isInside
+                  ? board.color
+                  : "#ffffff";
+
+              const strokeColor = finalVisible ? "#555" : "gray";
+              const dash = finalVisible ? "" : "20,20";
+
+              pattern.push(
+                <polygon
+                  key={`classic-${board.key}`}
+                  points={currentBoard.points.map(point => `${point.x},${point.y}`).join(" ")}
+                  fill={fillColor}
+                  stroke={strokeColor}
+                  strokeWidth={10}
+                  strokeDasharray={dash}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setToggledPlanks(prev => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(board.key)) newSet.delete(board.key);
+                      else newSet.add(board.key);
+                      return newSet;
+                    });
+                  }}
+                />
+              );
+            }
+          }
+        }
+      }
+
+      const aBoxes = Math.ceil(aPlanks / 12);
+      const bBoxes = Math.ceil(bPlanks / 12);
+
+      return (
+        <div className="p-4">
+          <h1 className="text-xl font-bold mb-2">Французская Классическая</h1>
+          <div className="flex flex-wrap gap-4 mb-2">
+            <div>Площадь: {areaM2} м²</div>
+            <div>Досок: {planksNeeded} (A: {aPlanks}, B: {bPlanks})</div>
+            <div>Упаковок: A {aBoxes}, B {bBoxes}</div>
+            <div>Целых: {fullPlanks}, рез: {cutPlanks}</div>
+            <div>Доска: 620 x 132 мм, спил 45°</div>
+          </div>
+          {hintText && (
+            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <span>Угол:</span>
+              <input
+                type="number"
+                min="-180"
+                max="180"
+                step="1"
+                value={layoutRotation}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
+              />
+              <span>°</span>
+              <span>X:</span>
+              <input
+                type="number"
+                step="10"
+                value={layoutOffsetX}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
+              />
+              <span>Y:</span>
+              <input
+                type="number"
+                step="10"
+                value={layoutOffsetY}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
+              />
+            </div>
+            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
+            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
+            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
+          </div>
+          <svg
+            ref={svgRef}
+            onClick={handleClick}
+            onMouseMove={handleMouseMove}
+            width={viewportWidth}
+            height={viewportHeight}
+            viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="border border-gray-400 bg-white cursor-crosshair"
+          >
+            <g>
+              {gridLines.vertical.map((x, i) => (
+                <line
+                  key={`cv${i}`}
+                  x1={x}
+                  y1={gridLines.startY}
+                  x2={x}
+                  y2={gridLines.endY}
+                  stroke="#eee"
+                  strokeWidth={5}
+                />
+              ))}
+              {gridLines.horizontal.map((y, i) => (
+                <line
+                  key={`ch${i}`}
+                  x1={gridLines.startX}
+                  y1={y}
+                  x2={gridLines.endX}
+                  y2={y}
+                  stroke="#eee"
+                  strokeWidth={10}
+                />
+              ))}
+              {pattern}
+              {rotatedPoints.map((p, i) => (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r={20} fill="red" />
+                  <text x={p.x + 30} y={p.y - 30} fontSize={120} fill="black">{i + 1}</text>
+                </g>
+              ))}
+              {rotatedPoints.map((p, i) => {
+                const next = rotatedPoints[(i + 1) % rotatedPoints.length];
+                if (i === points.length - 1 && !isClosed) return null;
+                return <line key={i} x1={p.x} y1={p.y} x2={next.x} y2={next.y} stroke="black" strokeWidth={10} />;
+              })}
+              {lastPoint && mousePos && !isClosed && (
+                <line
+                  x1={lastPoint.x}
+                  y1={lastPoint.y}
+                  x2={mousePos.x}
+                  y2={mousePos.y}
+                  stroke="orange"
+                  strokeWidth={10}
+                  strokeDasharray="10,10"
+                />
+              )}
+            </g>
+          </svg>
+        </div>
+      );
+    }
+
+    function FrenchBraidPlanner({ roomState }) {
+      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox } = roomState;
+      const [tileSize] = useState(620);
+      const [tileWidth] = useState(132);
+      const svgRef = useRef(null);
+      const [toggledPlanks, setToggledPlanks] = useState(new Set());
+      const viewportWidth = 800;
+      const viewportHeight = 600;
+      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
+
+      function getSvgCoordinates(e) {
+        const svg = svgRef.current;
+        const point = svg.createSVGPoint();
+        point.x = e.clientX;
+        point.y = e.clientY;
+        const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
+        return { x: transformed.x, y: transformed.y };
+      }
+
+      function handleClick(e) {
+        if (isClosed) return;
+        const { x, y } = getSvgCoordinates(e);
+        setPoints([...points, { x, y }]);
+      }
+
+      function handleMouseMove(e) {
+        if (isClosed) return;
+        setMousePos(getSvgCoordinates(e));
+      }
+
+      function closePolygon() {
+        if (points.length >= 3) setIsClosed(true);
+      }
+
+      function undoLastPoint() {
+        if (isClosed || points.length === 0) return;
+        setPoints(points.slice(0, -1));
+      }
+
+      function reset() {
+        setPoints([]);
+        setIsClosed(false);
+        setMousePos(null);
+        setToggledPlanks(new Set());
+        setLayoutRotation(0);
+        setLayoutOffsetX(0);
+        setLayoutOffsetY(0);
+        setViewBox(defaultViewBox);
+      }
+
+      function polygonArea(pts) {
+        let area = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const j = (i + 1) % pts.length;
+          area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+        }
+        return Math.abs(area / 2);
+      }
+
+      function rotatePolygon(pts, degrees) {
+        if (!pts.length || degrees === 0) return pts;
+
+        const xs = pts.map(p => p.x);
+        const ys = pts.map(p => p.y);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const rad = (degrees * Math.PI) / 180;
+
+        return pts.map(p => {
+          const dx = p.x - cx;
+          const dy = p.y - cy;
+          return {
+            x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+
+      const rotatedPoints = points;
+      const rotationCenter = useMemo(() => {
+        if (!points.length) return { x: 0, y: 0 };
+        const xs = points.map(point => point.x);
+        const ys = points.map(point => point.y);
+        return {
+          x: (Math.min(...xs) + Math.max(...xs)) / 2,
+          y: (Math.min(...ys) + Math.max(...ys)) / 2
+        };
+      }, [points]);
+
+      function rotatePatternPolygon(pts) {
+        if (!pts.length || layoutRotation === 0 || !points.length) return pts;
+        const rad = (layoutRotation * Math.PI) / 180;
+        return pts.map(point => {
+          const dx = point.x - rotationCenter.x;
+          const dy = point.y - rotationCenter.y;
+          return {
+            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+      function transformPatternPolygon(pts) {
+        return rotatePatternPolygon(pts).map(point => ({
+          x: point.x + layoutOffsetX,
+          y: point.y + layoutOffsetY
+        }));
+      }
+
+      useEffect(() => {
+        if (isClosed) {
+          setToggledPlanks(new Set());
+        }
+      }, [layoutRotation, isClosed]);
+
+      const area = isClosed ? polygonArea(rotatedPoints) : 0;
+      const areaM2 = (area / 1_000_000).toFixed(2);
+      let planksNeeded = 0, fullPlanks = 0, cutPlanks = 0, aPlanks = 0, bPlanks = 0;
+      const lastPoint = points[points.length - 1];
+      let hintText = "";
+      if (lastPoint && mousePos && !isClosed) {
+        const dx = mousePos.x - lastPoint.x;
+        const dy = mousePos.y - lastPoint.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+        hintText = `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
+      }
+
+      const pattern = [];
+      const isPointInPolygon = (point, polygon) => {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = polygon[i].x, yi = polygon[i].y;
+          const xj = polygon[j].x, yj = polygon[j].y;
+          const intersect = ((yi > point.y) !== (yj > point.y)) &&
+            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+      const getPolygonBounds = (polygon) => {
+        const xs = polygon.map(point => point.x);
+        const ys = polygon.map(point => point.y);
+        return {
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minY: Math.min(...ys),
+          maxY: Math.max(...ys)
+        };
+      };
+
+      function buildFittedViewBox(sourcePoints) {
+        if (!sourcePoints.length) {
+          return defaultViewBox;
+        }
+
+        const xs = sourcePoints.map(p => p.x);
+        const ys = sourcePoints.map(p => p.y);
+        const rawMinX = Math.min(...xs);
+        const rawMaxX = Math.max(...xs);
+        const rawMinY = Math.min(...ys);
+        const rawMaxY = Math.max(...ys);
+        const padding = 500;
+
+        let minX = rawMinX - padding;
+        let maxX = rawMaxX + padding;
+        let minY = rawMinY - padding;
+        let maxY = rawMaxY + padding;
+
+        let width = Math.max(maxX - minX, 1000);
+        let height = Math.max(maxY - minY, 1000);
+        const viewportAspect = viewportWidth / viewportHeight;
+        const contentAspect = width / height;
+
+        if (contentAspect > viewportAspect) {
+          const adjustedHeight = width / viewportAspect;
+          const extraHeight = adjustedHeight - height;
+          minY -= extraHeight / 2;
+          height = adjustedHeight;
+        } else {
+          const adjustedWidth = height * viewportAspect;
+          const extraWidth = adjustedWidth - width;
+          minX -= extraWidth / 2;
+          width = adjustedWidth;
+        }
+
+        return { minX, minY, width, height };
+      }
+
+      useEffect(() => {
+        if (!isClosed) return;
+        setViewBox(buildFittedViewBox(rotatedPoints));
+      }, [layoutRotation]);
+
+      const gridLines = useMemo(() => {
+        const step = 100;
+        const startX = Math.floor(viewBox.minX / step) * step;
+        const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
+        const startY = Math.floor(viewBox.minY / step) * step;
+        const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
+        const vertical = [];
+        const horizontal = [];
+
+        for (let x = startX; x <= endX; x += step) vertical.push(x);
+        for (let y = startY; y <= endY; y += step) horizontal.push(y);
+
+        return { vertical, horizontal, startX, endX, startY, endY };
+      }, [viewBox]);
+
+      if (isClosed) {
+        const rotatedRoomX = rotatedPoints.map(point => point.x);
+        const rotatedRoomY = rotatedPoints.map(point => point.y);
+        const minRoomX = Math.min(...rotatedRoomX);
+        const maxRoomX = Math.max(...rotatedRoomX);
+        const minRoomY = Math.min(...rotatedRoomY);
+        const maxRoomY = Math.max(...rotatedRoomY);
+        const shortSide = tileWidth;
+        const shortEdgeLength = tileWidth * Math.SQRT2;
+        const sideRun = tileSize / Math.SQRT2;
+        const shortRun = tileWidth / Math.SQRT2;
+        const moduleShiftX = -tileWidth;
+        const moduleShiftY = -(shortEdgeLength - tileWidth);
+        const rowShiftX = tileSize / Math.SQRT2;
+        const rowShiftY = -(tileSize + tileSize / Math.SQRT2);
+        const centerX = (minRoomX + maxRoomX) / 2;
+        const centerY = (minRoomY + maxRoomY) / 2 - shortSide / 2;
+        const repeatReachX = Math.ceil((maxRoomX - minRoomX + tileSize * 4) / tileWidth) + 4;
+        const repeatReachY = Math.ceil((maxRoomY - minRoomY + tileSize * 4) / (shortEdgeLength - tileWidth)) + 4;
+        const repeatReach = Math.max(repeatReachX, repeatReachY);
+        const rowReachX = Math.ceil((maxRoomX - minRoomX + tileSize * 4) / rowShiftX) + 4;
+        const rowReachY = Math.ceil((maxRoomY - minRoomY + tileSize * 4) / Math.abs(rowShiftY)) + 4;
+        const rowReach = Math.max(rowReachX, rowReachY);
+        const extraRenderPadding = tileSize;
+        const renderMinX = minRoomX - extraRenderPadding;
+        const renderMaxX = maxRoomX + extraRenderPadding;
+        const renderMinY = minRoomY - extraRenderPadding;
+        const renderMaxY = maxRoomY + extraRenderPadding;
+
+        for (let row = -rowReach; row <= rowReach; row++) {
+          for (let repeat = -repeatReach; repeat <= repeatReach; repeat++) {
+            const seamX = centerX + row * rowShiftX + repeat * moduleShiftX;
+            const y0 = centerY + row * rowShiftY + repeat * moduleShiftY;
+            const board = {
+              type: "A",
+              color: "#d5b07b",
+              key: `BA-${row}-${repeat}`,
+              points: [
+                { x: seamX, y: y0 },
+                { x: seamX, y: y0 + shortEdgeLength },
+                { x: seamX - sideRun, y: y0 + shortEdgeLength + sideRun },
+                { x: seamX - sideRun, y: y0 + sideRun }
+              ]
+            };
+            const bAnchorX = seamX;
+            const bAnchorY = y0 + shortEdgeLength;
+            const boardB = {
+              type: "B",
+              color: "#9a785f",
+              key: `BB-${row}-${repeat}`,
+              points: [
+                { x: bAnchorX, y: bAnchorY },
+                { x: bAnchorX + shortSide, y: bAnchorY - shortSide },
+                { x: bAnchorX + shortSide, y: bAnchorY - shortSide - tileSize },
+                { x: bAnchorX, y: bAnchorY - tileSize }
+              ]
+            };
+
+            for (const rawBoard of [board, boardB]) {
+              const currentBoard = {
+                ...rawBoard,
+                points: transformPatternPolygon(rawBoard.points)
+              };
+              const isInside = currentBoard.points.some(point => isPointInPolygon(point, rotatedPoints));
+              const manuallyToggled = toggledPlanks.has(currentBoard.key);
+              const finalVisible = manuallyToggled ? !isInside : isInside;
+              const bounds = getPolygonBounds(currentBoard.points);
+              const nearRoom = !(
+                bounds.maxX < renderMinX ||
+                bounds.minX > renderMaxX ||
+                bounds.maxY < renderMinY ||
+                bounds.minY > renderMaxY
+              );
+
+              if (!finalVisible && !manuallyToggled && !nearRoom) continue;
+
+              if (finalVisible) {
+                planksNeeded++;
+                if (currentBoard.type === "A") aPlanks++;
+                else bPlanks++;
+
+                const allInside = currentBoard.points.every(point => isPointInPolygon(point, rotatedPoints));
+                if (allInside) fullPlanks++;
+                else cutPlanks++;
+              }
+
+              const fillColor = manuallyToggled
+                ? "lightgray"
+                : isInside
+                  ? currentBoard.color
+                  : "#ffffff";
+
+              const strokeColor = finalVisible ? "#555" : "gray";
+              const dash = finalVisible ? "" : "20,20";
+
+              pattern.push(
+                <polygon
+                  key={`braid-${currentBoard.key}`}
+                  points={currentBoard.points.map(point => `${point.x},${point.y}`).join(" ")}
+                  fill={fillColor}
+                  stroke={strokeColor}
+                  strokeWidth={10}
+                  strokeDasharray={dash}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setToggledPlanks(prev => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(currentBoard.key)) newSet.delete(currentBoard.key);
+                      else newSet.add(currentBoard.key);
+                      return newSet;
+                    });
+                  }}
+                />
+              );
+            }
+          }
+        }
+      }
+
+      const aBoxes = Math.ceil(aPlanks / 12);
+      const bBoxes = Math.ceil(bPlanks / 12);
+
+      return (
+        <div className="p-4">
+          <h1 className="text-xl font-bold mb-2">Французская плетенка</h1>
+          <div className="flex flex-wrap gap-4 mb-2">
+            <div>Площадь: {areaM2} м²</div>
+            <div>Досок: {planksNeeded} (A: {aPlanks}, B: {bPlanks})</div>
+            <div>Упаковок: A {aBoxes}, B {bBoxes}</div>
+            <div>Целых: {fullPlanks}, рез: {cutPlanks}</div>
+            <div>Доска: 620 x 132 мм, спил 45°</div>
+          </div>
+          {hintText && (
+            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <span>Угол:</span>
+              <input
+                type="number"
+                min="-180"
+                max="180"
+                step="1"
+                value={layoutRotation}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
+              />
+              <span>°</span>
+              <span>X:</span>
+              <input
+                type="number"
+                step="10"
+                value={layoutOffsetX}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
+              />
+              <span>Y:</span>
+              <input
+                type="number"
+                step="10"
+                value={layoutOffsetY}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
+              />
+            </div>
+            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
+            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
+            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
+          </div>
+          <svg
+            ref={svgRef}
+            onClick={handleClick}
+            onMouseMove={handleMouseMove}
+            width={viewportWidth}
+            height={viewportHeight}
+            viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="border border-gray-400 bg-white cursor-crosshair"
+          >
+            <g>
+              {gridLines.vertical.map((x, i) => (
+                <line
+                  key={`bv${i}`}
+                  x1={x}
+                  y1={gridLines.startY}
+                  x2={x}
+                  y2={gridLines.endY}
+                  stroke="#eee"
+                  strokeWidth={5}
+                />
+              ))}
+              {gridLines.horizontal.map((y, i) => (
+                <line
+                  key={`bh${i}`}
+                  x1={gridLines.startX}
+                  y1={y}
+                  x2={gridLines.endX}
+                  y2={y}
+                  stroke="#eee"
+                  strokeWidth={10}
+                />
+              ))}
+              {pattern}
+              {rotatedPoints.map((p, i) => (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r={20} fill="red" />
+                  <text x={p.x + 30} y={p.y - 30} fontSize={120} fill="black">{i + 1}</text>
+                </g>
+              ))}
+              {rotatedPoints.map((p, i) => {
+                const next = rotatedPoints[(i + 1) % rotatedPoints.length];
+                if (i === points.length - 1 && !isClosed) return null;
+                return <line key={i} x1={p.x} y1={p.y} x2={next.x} y2={next.y} stroke="black" strokeWidth={10} />;
+              })}
+              {lastPoint && mousePos && !isClosed && (
+                <line
+                  x1={lastPoint.x}
+                  y1={lastPoint.y}
+                  x2={mousePos.x}
+                  y2={mousePos.y}
+                  stroke="orange"
+                  strokeWidth={10}
+                  strokeDasharray="10,10"
+                />
+              )}
+            </g>
+          </svg>
+        </div>
+      );
+    }
+
+    function FrenchLayoutsHub() {
+      const [selectedLayout, setSelectedLayout] = useState("variant2");
+      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
+      const [points, setPoints] = useState([]);
+      const [isClosed, setIsClosed] = useState(false);
+      const [mousePos, setMousePos] = useState(null);
+      const [layoutRotation, setLayoutRotation] = useState(0);
+      const [layoutOffsetX, setLayoutOffsetX] = useState(0);
+      const [layoutOffsetY, setLayoutOffsetY] = useState(0);
+      const [viewBox, setViewBox] = useState(defaultViewBox);
+
+      const roomState = {
+        points,
+        setPoints,
+        isClosed,
+        setIsClosed,
+        mousePos,
+        setMousePos,
+        layoutRotation,
+        setLayoutRotation,
+        layoutOffsetX,
+        setLayoutOffsetX,
+        layoutOffsetY,
+        setLayoutOffsetY,
+        viewBox,
+        setViewBox
+      };
+
+      return (
+        <div>
+          <div className="mb-4" style={{ maxWidth: "360px" }}>
+            <label style={{ marginBottom: "6px", fontWeight: "bold" }}>
+              Тип французской укладки:
+            </label>
+            <select
+              value={selectedLayout}
+              onChange={(e) => setSelectedLayout(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: "16px",
+                marginTop: "6px"
+              }}
+            >
+              <option value="variant2">Французская вариант 2</option>
+              <option value="classic">Французская Классическая</option>
+              <option value="braid">Французская плетенка</option>
+            </select>
+          </div>
+
+          {selectedLayout === "variant2" && <FrenchHerringbonePlanner roomState={roomState} />}
+          {selectedLayout === "classic" && <FrenchClassicPlanner roomState={roomState} />}
+          {selectedLayout === "braid" && <FrenchBraidPlanner roomState={roomState} />}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('react-root')).render(<FloorPlanner />);
+    ReactDOM.createRoot(document.getElementById('french-root')).render(<FrenchLayoutsHub />);
+</script>
+</body>
+</html>
+
