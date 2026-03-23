@@ -973,19 +973,23 @@
       const pattern = [];
 
       if (core.isClosed) {
-        const rotatedRoomX = core.rotatedPoints.map(point => point.x);
-        const rotatedRoomY = core.rotatedPoints.map(point => point.y);
-        const minRoomX = Math.min(...rotatedRoomX);
-        const maxRoomX = Math.max(...rotatedRoomX);
-        const minRoomY = Math.min(...rotatedRoomY);
-        const maxRoomY = Math.max(...rotatedRoomY);
+        const localRoomPoints = core.inverseRotatePatternPolygon(core.rotatedPoints);
+        const localRoomX = localRoomPoints.map(point => point.x);
+        const localRoomY = localRoomPoints.map(point => point.y);
         const seamLength = tileWidth * Math.SQRT2;
         const sideRun = tileSize / Math.SQRT2;
         const moduleWidth = sideRun * 2;
-        const startSeam = Math.floor((minRoomX - moduleWidth * 2) / moduleWidth) * moduleWidth;
-        const endSeam = Math.ceil((maxRoomX + moduleWidth * 2) / moduleWidth) * moduleWidth;
-        const startSegment = Math.floor((minRoomY - sideRun * 2) / seamLength) - 4;
-        const endSegment = Math.ceil((maxRoomY + sideRun * 2) / seamLength) + 4;
+        const offsetReach = Math.abs(core.layoutOffsetX) + Math.abs(core.layoutOffsetY);
+        const paddingX = moduleWidth * 2 + tileSize + offsetReach;
+        const paddingY = sideRun * 2 + seamLength * 2 + offsetReach;
+        const minRoomX = Math.min(...localRoomX) - paddingX;
+        const maxRoomX = Math.max(...localRoomX) + paddingX;
+        const minRoomY = Math.min(...localRoomY) - paddingY;
+        const maxRoomY = Math.max(...localRoomY) + paddingY;
+        const startSeam = Math.floor(minRoomX / moduleWidth) * moduleWidth;
+        const endSeam = Math.ceil(maxRoomX / moduleWidth) * moduleWidth;
+        const startSegment = Math.floor(minRoomY / seamLength) - 1;
+        const endSegment = Math.ceil(maxRoomY / seamLength) + 1;
 
         for (let seamX = startSeam; seamX <= endSeam; seamX += moduleWidth) {
           for (let segment = startSegment; segment <= endSegment; segment++) {
