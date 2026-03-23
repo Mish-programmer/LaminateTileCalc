@@ -333,6 +333,12 @@
           viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
           preserveAspectRatio="xMidYMid meet"
           className="border border-gray-400 bg-white cursor-crosshair"
+          style={{
+            display: "block",
+            border: "2px solid #9ca3af",
+            backgroundColor: "#ffffff",
+            boxSizing: "border-box"
+          }}
         >
           <g>
             {gridLines.vertical.map(x => (
