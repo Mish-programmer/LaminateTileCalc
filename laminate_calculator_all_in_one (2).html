@@ -59,8 +59,7 @@
 <body>
 <div class="tabs">
 <button class="active" onclick="showTab('plotlyTab', this)">Простой калькулятор</button>
-<button onclick="showTab('reactTab', this)">Инженерный редактор</button>
-<button onclick="showTab('frenchTab', this)">Французская укладка</button>
+<button onclick="showTab('frenchTab', this)">Проектный расчет</button>
 </div>
 <div class="tab-content active" id="plotlyTab">
 <h1>Калькулятор коллекций FLOOREO PEAKS и FLOOREO WATERFALLS</h1>
@@ -73,9 +72,6 @@
 <label>Поворот укладки (градусы): <input id="roomRotation" max="180" min="-180" step="1" type="number" value="0"/></label>
 <div id="plot"></div>
 <div id="results"></div>
-</div>
-<div class="tab-content" id="reactTab">
-<div id="react-root"></div>
 </div>
 <div class="tab-content" id="frenchTab">
 <div id="french-root"></div>
@@ -273,19 +269,15 @@ function calculate() {
 <script type="text/babel">
      const { useState, useRef, useMemo, useEffect } = React;
 
-    function FloorPlanner() {
-      const [points, setPoints] = useState([]);
-      const [isClosed, setIsClosed] = useState(false);
+    function EnglishHerringbonePlanner({ roomState }) {
+      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, dragMeasureStart, setDragMeasureStart, dragMeasureMoved, setDragMeasureMoved, suppressBoardClick, setSuppressBoardClick, isMeasuring, setIsMeasuring, resetCurrentLayoutSettings } = roomState;
       const [tileSize] = useState(694);
       const [tileWidth] = useState(132);
-      const [mousePos, setMousePos] = useState(null);
       const svgRef = useRef(null);
       const [toggledPlanks, setToggledPlanks] = useState(new Set());
-      const [layoutRotation, setLayoutRotation] = useState(0);
       const viewportWidth = 800;
       const viewportHeight = 600;
       const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
-      const [viewBox, setViewBox] = useState(defaultViewBox);
 
       function getSvgCoordinates(e) {
         const svg = svgRef.current;
@@ -296,15 +288,94 @@ function calculate() {
         return { x: transformed.x, y: transformed.y };
       }
 
+      function projectPointToSegment(point, a, b) {
+        const abx = b.x - a.x;
+        const aby = b.y - a.y;
+        const apx = point.x - a.x;
+        const apy = point.y - a.y;
+        const abLenSq = abx * abx + aby * aby;
+        if (abLenSq === 0) return a;
+        const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
+        return {
+          x: a.x + abx * t,
+          y: a.y + aby * t
+        };
+      }
+
+      function startMeasurement(e, start, end) {
+        if (!isClosed) return;
+        e.stopPropagation();
+        const point = projectPointToSegment(getSvgCoordinates(e), start, end);
+        setDraftRulerStart(point);
+        setDraftRulerEnd(point);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setIsMeasuring(true);
+      }
+
+      function handleMouseDown(e) {
+        if (!isClosed || e.button !== 0 || isMeasuring) return;
+        const coords = getSvgCoordinates(e);
+        setDragMeasureStart(coords);
+        setDragMeasureMoved(false);
+        setDraftRulerStart(coords);
+        setDraftRulerEnd(coords);
+      }
+
+      function handleMouseUp(e) {
+        if (!dragMeasureStart) return;
+        const coords = getSvgCoordinates(e);
+        finalizeMeasurement(coords, true);
+      }
+
+      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
+        if (!draftRulerStart) return false;
+        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
+        const shouldSave = length >= 15;
+        if (shouldSave) {
+          setDraftRulerEnd(endPoint);
+          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
+          if (suppressNextBoardClick) {
+            setSuppressBoardClick(true);
+          }
+        }
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setIsMeasuring(false);
+        return shouldSave;
+      }
+
       function handleClick(e) {
-        if (isClosed) return;
+        if (isClosed) {
+          if (isMeasuring && !dragMeasureStart) {
+            finalizeMeasurement(getSvgCoordinates(e));
+          }
+          return;
+        }
         const { x, y } = getSvgCoordinates(e);
         setPoints([...points, { x, y }]);
       }
 
       function handleMouseMove(e) {
+        const coords = getSvgCoordinates(e);
+        if (dragMeasureStart) {
+          setMousePos(coords);
+          setDraftRulerEnd(coords);
+          if (!dragMeasureMoved && Math.hypot(coords.x - dragMeasureStart.x, coords.y - dragMeasureStart.y) > 5) {
+            setDragMeasureMoved(true);
+            setIsMeasuring(true);
+          }
+          return;
+        }
+        if (isMeasuring) {
+          setMousePos(coords);
+          setDraftRulerEnd(coords);
+          return;
+        }
         if (isClosed) return;
-        setMousePos(getSvgCoordinates(e));
+        setMousePos(coords);
       }
 
       function closePolygon() {
@@ -321,7 +392,14 @@ function calculate() {
         setIsClosed(false);
         setMousePos(null);
         setToggledPlanks(new Set());
-        setLayoutRotation(0);
+        resetCurrentLayoutSettings();
+        setMeasurements([]);
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setSuppressBoardClick(false);
+        setIsMeasuring(false);
         setViewBox(defaultViewBox);
       }
 
@@ -375,6 +453,13 @@ function calculate() {
             y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
           };
         });
+      }
+
+      function transformPatternPolygon(pts) {
+        return rotatePatternPolygon(pts).map(point => ({
+          x: point.x + layoutOffsetX,
+          y: point.y + layoutOffsetY
+        }));
       }
 
       useEffect(() => {
@@ -510,15 +595,16 @@ function calculate() {
                 y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
               };
             });
+            const transformedCorners = transformPatternPolygon(corners);
 
-            const isInside = corners.some(c => isPointInPolygon(c, rotatedPoints));
+            const isInside = transformedCorners.some(c => isPointInPolygon(c, rotatedPoints));
             const key = `${rowIndex}-${x}`;
             const manuallyToggled = toggledPlanks.has(key);
             const finalVisible = manuallyToggled ? !isInside : isInside;
 
             if (finalVisible) {
               planksNeeded++;
-              const allInside = corners.every(c => isPointInPolygon(c, rotatedPoints));
+              const allInside = transformedCorners.every(c => isPointInPolygon(c, rotatedPoints));
               if (allInside) fullPlanks++;
               else cutPlanks++;
             }
@@ -533,19 +619,23 @@ function calculate() {
             const dash = finalVisible ? "" : "20,20";
 
             pattern.push(
-              <rect
+              <polygon
                 key={`plank-${rowIndex}-${x}`}
-                x={cx - tileSize / 2}
-                y={cy - tileWidth / 2}
-                width={tileSize}
-                height={tileWidth}
-                transform={`rotate(${angle} ${cx} ${cy})`}
+                points={transformedCorners.map(point => `${point.x},${point.y}`).join(" ")}
                 fill={fillColor}
                 stroke={strokeColor}
                 strokeWidth={10}
                 strokeDasharray={dash}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (suppressBoardClick) {
+                    setSuppressBoardClick(false);
+                    return;
+                  }
+                  if (isMeasuring) {
+                    const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
+                    if (savedMeasurement) return;
+                  }
                   setToggledPlanks(prev => {
                     const newSet = new Set(prev);
                     const key = `${rowIndex}-${x}`;
@@ -560,15 +650,27 @@ function calculate() {
         }
       }
 
+      const rulerLength = draftRulerStart && draftRulerEnd
+        ? Math.hypot(draftRulerEnd.x - draftRulerStart.x, draftRulerEnd.y - draftRulerStart.y)
+        : 0;
+      const rulerMidX = draftRulerStart && draftRulerEnd ? (draftRulerStart.x + draftRulerEnd.x) / 2 : 0;
+      const rulerMidY = draftRulerStart && draftRulerEnd ? (draftRulerStart.y + draftRulerEnd.y) / 2 : 0;
+
       return (
         <div className="p-4">
-          <h1 className="text-xl font-bold mb-2">Инженерный редактор укладки</h1>
-          <div className="flex gap-4 mb-2">
-            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
-            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
-            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
-            <label className="flex items-center gap-2">
-              Поворот укладки:
+          <h1 className="text-xl font-bold mb-2">Английская елка</h1>
+          <div className="flex flex-wrap gap-4 mb-2">
+            <div>Площадь: {areaM2} м²</div>
+            <div>Досок: {planksNeeded} (целых: {fullPlanks}, рез: {cutPlanks})</div>
+            <div>PEAKS: {Math.ceil(planksNeeded / 12)} уп. ({(Math.ceil(planksNeeded / 12) * 1.1).toFixed(3)} м²)</div>
+            <div>WATERFALLS: {Math.ceil(planksNeeded / 15)} уп. ({(Math.ceil(planksNeeded / 15) * 1.374).toFixed(3)} м²)</div>
+          </div>
+          {hintText && (
+            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <span>Угол:</span>
               <input
                 type="number"
                 min="-180"
@@ -579,19 +681,34 @@ function calculate() {
                 onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
               />
               <span>°</span>
-            </label>
-            <div>Площадь: {areaM2} м²</div>
-            <div>Досок: {planksNeeded} (целых: {fullPlanks}, рез: {cutPlanks})</div>
-            <div>PEAKS: {Math.ceil(planksNeeded / 12)} уп. ({(Math.ceil(planksNeeded / 12) * 1.1).toFixed(3)} м²)</div>
-            <div>WATERFALLS: {Math.ceil(planksNeeded / 15)} уп. ({(Math.ceil(planksNeeded / 15) * 1.374).toFixed(3)} м²)</div>
+              <span>X:</span>
+              <input
+                type="number"
+                step="10"
+                value={layoutOffsetX}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
+              />
+              <span>Y:</span>
+              <input
+                type="number"
+                step="10"
+                value={layoutOffsetY}
+                disabled={!isClosed}
+                onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
+              />
+            </div>
+            <button onClick={() => { setMeasurements([]); setDraftRulerStart(null); setDraftRulerEnd(null); setIsMeasuring(false); }} className="bg-red-100 px-2 py-1 rounded">Удалить измерения</button>
+            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
+            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
+            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
           </div>
-          {hintText && (
-            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
-          )}
           <svg
             ref={svgRef}
             onClick={handleClick}
+            onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             width={viewportWidth}
             height={viewportHeight}
             viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
@@ -622,6 +739,27 @@ function calculate() {
                 />
               ))}
               {pattern}
+              {measurements.map((measurement, index) => {
+                const length = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
+                const midX = (measurement.start.x + measurement.end.x) / 2;
+                const midY = (measurement.start.y + measurement.end.y) / 2;
+                return (
+                  <g key={`measurement-${index}`}>
+                    <line x1={measurement.start.x} y1={measurement.start.y} x2={measurement.end.x} y2={measurement.end.y} stroke="#d62828" strokeWidth={12} />
+                    <text x={midX} y={midY - 20} fontSize={90} fill="#d62828" textAnchor="middle" stroke="#ffffff" strokeWidth={10} paintOrder="stroke">
+                      {`${length.toFixed(0)} мм`}
+                    </text>
+                  </g>
+                );
+              })}
+              {draftRulerStart && draftRulerEnd && (
+                <g>
+                  <line x1={draftRulerStart.x} y1={draftRulerStart.y} x2={draftRulerEnd.x} y2={draftRulerEnd.y} stroke="#d62828" strokeWidth={12} />
+                  <text x={rulerMidX} y={rulerMidY - 20} fontSize={90} fill="#d62828" textAnchor="middle" stroke="#ffffff" strokeWidth={10} paintOrder="stroke">
+                    {`${rulerLength.toFixed(0)} мм`}
+                  </text>
+                </g>
+              )}
               {rotatedPoints.map((p, i) => (
                 <g key={i}>
                   <circle cx={p.x} cy={p.y} r={20} fill="red" />
@@ -631,7 +769,18 @@ function calculate() {
               {rotatedPoints.map((p, i) => {
                 const next = rotatedPoints[(i + 1) % rotatedPoints.length];
                 if (i === points.length - 1 && !isClosed) return null;
-                return <line key={i} x1={p.x} y1={p.y} x2={next.x} y2={next.y} stroke="black" strokeWidth={10} />;
+                return (
+                  <line
+                    key={i}
+                    x1={p.x}
+                    y1={p.y}
+                    x2={next.x}
+                    y2={next.y}
+                    stroke="black"
+                    strokeWidth={10}
+                    onClick={(e) => startMeasurement(e, p, next)}
+                  />
+                );
               })}
               {lastPoint && mousePos && !isClosed && (
                 <line
@@ -651,7 +800,7 @@ function calculate() {
     }
 
     function FrenchHerringbonePlanner({ roomState }) {
-      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, isMeasuring, setIsMeasuring } = roomState;
+      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, dragMeasureStart, setDragMeasureStart, dragMeasureMoved, setDragMeasureMoved, suppressBoardClick, setSuppressBoardClick, isMeasuring, setIsMeasuring, resetCurrentLayoutSettings } = roomState;
       const [tileSize] = useState(620);
       const [tileWidth] = useState(132);
       const svgRef = useRef(null);
@@ -689,18 +838,49 @@ function calculate() {
         const point = projectPointToSegment(getSvgCoordinates(e), start, end);
         setDraftRulerStart(point);
         setDraftRulerEnd(point);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
         setIsMeasuring(true);
+      }
+
+      function handleMouseDown(e) {
+        if (!isClosed || e.button !== 0 || isMeasuring) return;
+        const coords = getSvgCoordinates(e);
+        setDragMeasureStart(coords);
+        setDragMeasureMoved(false);
+        setDraftRulerStart(coords);
+        setDraftRulerEnd(coords);
+      }
+
+      function handleMouseUp(e) {
+        if (!dragMeasureStart) return;
+        const coords = getSvgCoordinates(e);
+        finalizeMeasurement(coords, true);
+      }
+
+      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
+        if (!draftRulerStart) return false;
+        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
+        const shouldSave = length >= 15;
+        if (shouldSave) {
+          setDraftRulerEnd(endPoint);
+          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
+          if (suppressNextBoardClick) {
+            setSuppressBoardClick(true);
+          }
+        }
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setIsMeasuring(false);
+        return shouldSave;
       }
 
       function handleClick(e) {
         if (isClosed) {
-          if (isMeasuring) {
-            const nextPoint = getSvgCoordinates(e);
-            setDraftRulerEnd(nextPoint);
-            setMeasurements(prev => [...prev, { start: draftRulerStart, end: nextPoint }]);
-            setDraftRulerStart(null);
-            setDraftRulerEnd(null);
-            setIsMeasuring(false);
+          if (isMeasuring && !dragMeasureStart) {
+            finalizeMeasurement(getSvgCoordinates(e));
           }
           return;
         }
@@ -710,6 +890,15 @@ function calculate() {
 
       function handleMouseMove(e) {
         const coords = getSvgCoordinates(e);
+        if (dragMeasureStart) {
+          setMousePos(coords);
+          setDraftRulerEnd(coords);
+          if (!dragMeasureMoved && Math.hypot(coords.x - dragMeasureStart.x, coords.y - dragMeasureStart.y) > 5) {
+            setDragMeasureMoved(true);
+            setIsMeasuring(true);
+          }
+          return;
+        }
         if (isMeasuring) {
           setMousePos(coords);
           setDraftRulerEnd(coords);
@@ -733,12 +922,13 @@ function calculate() {
         setIsClosed(false);
         setMousePos(null);
         setToggledPlanks(new Set());
-        setLayoutRotation(0);
-        setLayoutOffsetX(0);
-        setLayoutOffsetY(0);
+        resetCurrentLayoutSettings();
         setMeasurements([]);
         setDraftRulerStart(null);
         setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setSuppressBoardClick(false);
         setIsMeasuring(false);
         setViewBox(defaultViewBox);
       }
@@ -969,16 +1159,15 @@ function calculate() {
                 stroke={strokeColor}
                 strokeWidth={10}
                 strokeDasharray={dash}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isMeasuring) {
-                    const nextPoint = getSvgCoordinates(e);
-                    setDraftRulerEnd(nextPoint);
-                    setMeasurements(prev => [...prev, { start: draftRulerStart, end: nextPoint }]);
-                    setDraftRulerStart(null);
-                    setDraftRulerEnd(null);
-                    setIsMeasuring(false);
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  if (suppressBoardClick) {
+                    setSuppressBoardClick(false);
                     return;
+                  }
+                  if (isMeasuring) {
+                    const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
+                    if (savedMeasurement) return;
                   }
                   setToggledPlanks(prev => {
                     const newSet = new Set(prev);
@@ -1052,7 +1241,9 @@ function calculate() {
           <svg
             ref={svgRef}
             onClick={handleClick}
+            onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             width={viewportWidth}
             height={viewportHeight}
             viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
@@ -1176,7 +1367,7 @@ function calculate() {
     }
 
     function FrenchClassicPlanner({ roomState }) {
-      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, isMeasuring, setIsMeasuring } = roomState;
+      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, dragMeasureStart, setDragMeasureStart, dragMeasureMoved, setDragMeasureMoved, suppressBoardClick, setSuppressBoardClick, isMeasuring, setIsMeasuring, resetCurrentLayoutSettings } = roomState;
       const [tileSize] = useState(620);
       const [tileWidth] = useState(132);
       const svgRef = useRef(null);
@@ -1214,18 +1405,49 @@ function calculate() {
         const point = projectPointToSegment(getSvgCoordinates(e), start, end);
         setDraftRulerStart(point);
         setDraftRulerEnd(point);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
         setIsMeasuring(true);
+      }
+
+      function handleMouseDown(e) {
+        if (!isClosed || e.button !== 0 || isMeasuring) return;
+        const coords = getSvgCoordinates(e);
+        setDragMeasureStart(coords);
+        setDragMeasureMoved(false);
+        setDraftRulerStart(coords);
+        setDraftRulerEnd(coords);
+      }
+
+      function handleMouseUp(e) {
+        if (!dragMeasureStart) return;
+        const coords = getSvgCoordinates(e);
+        finalizeMeasurement(coords, true);
+      }
+
+      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
+        if (!draftRulerStart) return false;
+        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
+        const shouldSave = length >= 15;
+        if (shouldSave) {
+          setDraftRulerEnd(endPoint);
+          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
+          if (suppressNextBoardClick) {
+            setSuppressBoardClick(true);
+          }
+        }
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setIsMeasuring(false);
+        return shouldSave;
       }
 
       function handleClick(e) {
         if (isClosed) {
-          if (isMeasuring) {
-            const nextPoint = getSvgCoordinates(e);
-            setDraftRulerEnd(nextPoint);
-            setMeasurements(prev => [...prev, { start: draftRulerStart, end: nextPoint }]);
-            setDraftRulerStart(null);
-            setDraftRulerEnd(null);
-            setIsMeasuring(false);
+          if (isMeasuring && !dragMeasureStart) {
+            finalizeMeasurement(getSvgCoordinates(e));
           }
           return;
         }
@@ -1235,6 +1457,15 @@ function calculate() {
 
       function handleMouseMove(e) {
         const coords = getSvgCoordinates(e);
+        if (dragMeasureStart) {
+          setMousePos(coords);
+          setDraftRulerEnd(coords);
+          if (!dragMeasureMoved && Math.hypot(coords.x - dragMeasureStart.x, coords.y - dragMeasureStart.y) > 5) {
+            setDragMeasureMoved(true);
+            setIsMeasuring(true);
+          }
+          return;
+        }
         if (isMeasuring) {
           setMousePos(coords);
           setDraftRulerEnd(coords);
@@ -1258,12 +1489,13 @@ function calculate() {
         setIsClosed(false);
         setMousePos(null);
         setToggledPlanks(new Set());
-        setLayoutRotation(0);
-        setLayoutOffsetX(0);
-        setLayoutOffsetY(0);
+        resetCurrentLayoutSettings();
         setMeasurements([]);
         setDraftRulerStart(null);
         setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setSuppressBoardClick(false);
         setIsMeasuring(false);
         setViewBox(defaultViewBox);
       }
@@ -1515,15 +1747,14 @@ function calculate() {
                   strokeDasharray={dash}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (isMeasuring) {
-                      const nextPoint = getSvgCoordinates(e);
-                      setDraftRulerEnd(nextPoint);
-                      setMeasurements(prev => [...prev, { start: draftRulerStart, end: nextPoint }]);
-                      setDraftRulerStart(null);
-                      setDraftRulerEnd(null);
-                      setIsMeasuring(false);
-                      return;
-                    }
+                  if (suppressBoardClick) {
+                    setSuppressBoardClick(false);
+                    return;
+                  }
+                  if (isMeasuring) {
+                    const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
+                    if (savedMeasurement) return;
+                  }
                     setToggledPlanks(prev => {
                       const newSet = new Set(prev);
                       if (newSet.has(board.key)) newSet.delete(board.key);
@@ -1597,7 +1828,9 @@ function calculate() {
           <svg
             ref={svgRef}
             onClick={handleClick}
+            onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             width={viewportWidth}
             height={viewportHeight}
             viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
@@ -1704,8 +1937,8 @@ function calculate() {
       );
     }
 
-    function FrenchBraidPlanner({ roomState }) {
-      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, isMeasuring, setIsMeasuring } = roomState;
+    function FrenchBraidPlanner({ roomState, title = "Царская елка", singlePair = false, singleRow = false, pairBOffsetY = 0, moduleShiftXOverride = null, moduleShiftYOverride = null, rowShiftXOverride = null, rowShiftYOverride = null, previewRowCount = null, previewRepeatCount = null }) {
+      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, dragMeasureStart, setDragMeasureStart, dragMeasureMoved, setDragMeasureMoved, suppressBoardClick, setSuppressBoardClick, isMeasuring, setIsMeasuring, resetCurrentLayoutSettings } = roomState;
       const [tileSize] = useState(620);
       const [tileWidth] = useState(132);
       const svgRef = useRef(null);
@@ -1743,18 +1976,49 @@ function calculate() {
         const point = projectPointToSegment(getSvgCoordinates(e), start, end);
         setDraftRulerStart(point);
         setDraftRulerEnd(point);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
         setIsMeasuring(true);
+      }
+
+      function handleMouseDown(e) {
+        if (!isClosed || e.button !== 0 || isMeasuring) return;
+        const coords = getSvgCoordinates(e);
+        setDragMeasureStart(coords);
+        setDragMeasureMoved(false);
+        setDraftRulerStart(coords);
+        setDraftRulerEnd(coords);
+      }
+
+      function handleMouseUp(e) {
+        if (!dragMeasureStart) return;
+        const coords = getSvgCoordinates(e);
+        finalizeMeasurement(coords, true);
+      }
+
+      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
+        if (!draftRulerStart) return false;
+        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
+        const shouldSave = length >= 15;
+        if (shouldSave) {
+          setDraftRulerEnd(endPoint);
+          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
+          if (suppressNextBoardClick) {
+            setSuppressBoardClick(true);
+          }
+        }
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setIsMeasuring(false);
+        return shouldSave;
       }
 
       function handleClick(e) {
         if (isClosed) {
-          if (isMeasuring) {
-            const nextPoint = getSvgCoordinates(e);
-            setDraftRulerEnd(nextPoint);
-            setMeasurements(prev => [...prev, { start: draftRulerStart, end: nextPoint }]);
-            setDraftRulerStart(null);
-            setDraftRulerEnd(null);
-            setIsMeasuring(false);
+          if (isMeasuring && !dragMeasureStart) {
+            finalizeMeasurement(getSvgCoordinates(e));
           }
           return;
         }
@@ -1764,6 +2028,15 @@ function calculate() {
 
       function handleMouseMove(e) {
         const coords = getSvgCoordinates(e);
+        if (dragMeasureStart) {
+          setMousePos(coords);
+          setDraftRulerEnd(coords);
+          if (!dragMeasureMoved && Math.hypot(coords.x - dragMeasureStart.x, coords.y - dragMeasureStart.y) > 5) {
+            setDragMeasureMoved(true);
+            setIsMeasuring(true);
+          }
+          return;
+        }
         if (isMeasuring) {
           setMousePos(coords);
           setDraftRulerEnd(coords);
@@ -1787,12 +2060,13 @@ function calculate() {
         setIsClosed(false);
         setMousePos(null);
         setToggledPlanks(new Set());
-        setLayoutRotation(0);
-        setLayoutOffsetX(0);
-        setLayoutOffsetY(0);
+        resetCurrentLayoutSettings();
         setMeasurements([]);
         setDraftRulerStart(null);
         setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setSuppressBoardClick(false);
         setIsMeasuring(false);
         setViewBox(defaultViewBox);
       }
@@ -1966,10 +2240,10 @@ function calculate() {
         const shortEdgeLength = tileWidth * Math.SQRT2;
         const sideRun = tileSize / Math.SQRT2;
         const shortRun = tileWidth / Math.SQRT2;
-        const moduleShiftX = -tileWidth;
-        const moduleShiftY = -(shortEdgeLength - tileWidth);
-        const rowShiftX = tileSize / Math.SQRT2;
-        const rowShiftY = -(tileSize + tileSize / Math.SQRT2);
+        const moduleShiftX = moduleShiftXOverride ?? -tileWidth;
+        const moduleShiftY = moduleShiftYOverride ?? -(shortEdgeLength - tileWidth);
+        const rowShiftX = rowShiftXOverride ?? tileSize / Math.SQRT2;
+        const rowShiftY = rowShiftYOverride ?? -(tileSize + tileSize / Math.SQRT2);
         const centerX = (minRoomX + maxRoomX) / 2;
         const centerY = (minRoomY + maxRoomY) / 2 - shortSide / 2;
         const repeatReachX = Math.ceil((maxRoomX - minRoomX + tileSize * 4) / tileWidth) + 4;
@@ -1984,8 +2258,13 @@ function calculate() {
         const renderMinY = minRoomY - extraRenderPadding;
         const renderMaxY = maxRoomY + extraRenderPadding;
 
-        for (let row = -rowReach; row <= rowReach; row++) {
-          for (let repeat = -repeatReach; repeat <= repeatReach; repeat++) {
+        const rowStart = previewRowCount !== null ? 0 : ((singlePair || singleRow) ? 0 : -rowReach);
+        const rowEnd = previewRowCount !== null ? Math.max(0, previewRowCount - 1) : ((singlePair || singleRow) ? 0 : rowReach);
+        const repeatStart = previewRepeatCount !== null ? 0 : (singlePair ? 0 : -repeatReach);
+        const repeatEnd = previewRepeatCount !== null ? Math.max(0, previewRepeatCount - 1) : (singlePair ? 0 : repeatReach);
+
+        for (let row = rowStart; row <= rowEnd; row++) {
+          for (let repeat = repeatStart; repeat <= repeatEnd; repeat++) {
             const seamX = centerX + row * rowShiftX + repeat * moduleShiftX;
             const y0 = centerY + row * rowShiftY + repeat * moduleShiftY;
             const board = {
@@ -2000,7 +2279,7 @@ function calculate() {
               ]
             };
             const bAnchorX = seamX;
-            const bAnchorY = y0 + shortEdgeLength;
+            const bAnchorY = y0 + shortEdgeLength + pairBOffsetY;
             const boardB = {
               type: "B",
               color: "#9a785f",
@@ -2060,15 +2339,14 @@ function calculate() {
                   strokeDasharray={dash}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (isMeasuring) {
-                      const nextPoint = getSvgCoordinates(e);
-                      setDraftRulerEnd(nextPoint);
-                      setMeasurements(prev => [...prev, { start: draftRulerStart, end: nextPoint }]);
-                      setDraftRulerStart(null);
-                      setDraftRulerEnd(null);
-                      setIsMeasuring(false);
-                      return;
-                    }
+                  if (suppressBoardClick) {
+                    setSuppressBoardClick(false);
+                    return;
+                  }
+                  if (isMeasuring) {
+                    const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
+                    if (savedMeasurement) return;
+                  }
                     setToggledPlanks(prev => {
                       const newSet = new Set(prev);
                       if (newSet.has(currentBoard.key)) newSet.delete(currentBoard.key);
@@ -2093,7 +2371,7 @@ function calculate() {
 
       return (
         <div className="p-4">
-          <h1 className="text-xl font-bold mb-2">Французская плетенка</h1>
+          <h1 className="text-xl font-bold mb-2">{title}</h1>
           <div className="flex flex-wrap gap-4 mb-2">
             <div>Площадь: {areaM2} м²</div>
             <div>Досок: {planksNeeded} (A: {aPlanks}, B: {bPlanks})</div>
@@ -2142,7 +2420,9 @@ function calculate() {
           <svg
             ref={svgRef}
             onClick={handleClick}
+            onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             width={viewportWidth}
             height={viewportHeight}
             viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
@@ -2250,19 +2530,49 @@ function calculate() {
     }
 
     function FrenchLayoutsHub() {
-      const [selectedLayout, setSelectedLayout] = useState("variant2");
+      const [selectedLayout, setSelectedLayout] = useState("english");
       const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
+      const layoutDefaults = {
+        english: { rotation: 90, offsetX: 0, offsetY: 0 },
+        variant2: { rotation: -45, offsetX: 0, offsetY: 0 },
+        classic: { rotation: 0, offsetX: 0, offsetY: 0 },
+        italian: { rotation: -23, offsetX: 0, offsetY: 0 },
+        braid: { rotation: 67, offsetX: 0, offsetY: 0 }
+      };
       const [points, setPoints] = useState([]);
       const [isClosed, setIsClosed] = useState(false);
       const [mousePos, setMousePos] = useState(null);
-      const [layoutRotation, setLayoutRotation] = useState(0);
-      const [layoutOffsetX, setLayoutOffsetX] = useState(0);
-      const [layoutOffsetY, setLayoutOffsetY] = useState(0);
+      const [layoutSettings, setLayoutSettings] = useState(layoutDefaults);
       const [measurements, setMeasurements] = useState([]);
       const [draftRulerStart, setDraftRulerStart] = useState(null);
       const [draftRulerEnd, setDraftRulerEnd] = useState(null);
+      const [dragMeasureStart, setDragMeasureStart] = useState(null);
+      const [dragMeasureMoved, setDragMeasureMoved] = useState(false);
+      const [suppressBoardClick, setSuppressBoardClick] = useState(false);
       const [isMeasuring, setIsMeasuring] = useState(false);
       const [viewBox, setViewBox] = useState(defaultViewBox);
+
+      const currentLayoutSettings = layoutSettings[selectedLayout] || layoutDefaults[selectedLayout];
+      const layoutRotation = currentLayoutSettings.rotation;
+      const layoutOffsetX = currentLayoutSettings.offsetX;
+      const layoutOffsetY = currentLayoutSettings.offsetY;
+
+      function updateCurrentLayoutSetting(field, value) {
+        setLayoutSettings(prev => ({
+          ...prev,
+          [selectedLayout]: {
+            ...(prev[selectedLayout] || layoutDefaults[selectedLayout]),
+            [field]: value
+          }
+        }));
+      }
+
+      function resetCurrentLayoutSettings() {
+        setLayoutSettings(prev => ({
+          ...prev,
+          [selectedLayout]: { ...layoutDefaults[selectedLayout] }
+        }));
+      }
 
       const roomState = {
         points,
@@ -2272,17 +2582,24 @@ function calculate() {
         mousePos,
         setMousePos,
         layoutRotation,
-        setLayoutRotation,
+        setLayoutRotation: (value) => updateCurrentLayoutSetting("rotation", value),
         layoutOffsetX,
-        setLayoutOffsetX,
+        setLayoutOffsetX: (value) => updateCurrentLayoutSetting("offsetX", value),
         layoutOffsetY,
-        setLayoutOffsetY,
+        setLayoutOffsetY: (value) => updateCurrentLayoutSetting("offsetY", value),
+        resetCurrentLayoutSettings,
         measurements,
         setMeasurements,
         draftRulerStart,
         setDraftRulerStart,
         draftRulerEnd,
         setDraftRulerEnd,
+        dragMeasureStart,
+        setDragMeasureStart,
+        dragMeasureMoved,
+        setDragMeasureMoved,
+        suppressBoardClick,
+        setSuppressBoardClick,
         isMeasuring,
         setIsMeasuring,
         viewBox,
@@ -2305,20 +2622,33 @@ function calculate() {
                 marginTop: "6px"
               }}
             >
+              <option value="english">Английская елка</option>
               <option value="variant2">Французская вариант 2</option>
               <option value="classic">Французская Классическая</option>
-              <option value="braid">Французская плетенка</option>
+              <option value="italian">Итальянская елка</option>
+              <option value="braid">Царская елка</option>
             </select>
           </div>
 
+          {selectedLayout === "english" && <EnglishHerringbonePlanner roomState={roomState} />}
           {selectedLayout === "variant2" && <FrenchHerringbonePlanner roomState={roomState} />}
           {selectedLayout === "classic" && <FrenchClassicPlanner roomState={roomState} />}
+          {selectedLayout === "italian" && (
+            <FrenchBraidPlanner
+              roomState={roomState}
+              title="Итальянская елка"
+              pairBOffsetY={620 - 132 * Math.SQRT2}
+              moduleShiftXOverride={132}
+              moduleShiftYOverride={-132 * Math.SQRT2-132}
+              rowShiftXOverride={620 / Math.SQRT2 + 132}
+              rowShiftYOverride={-132}
+            />
+          )}
           {selectedLayout === "braid" && <FrenchBraidPlanner roomState={roomState} />}
         </div>
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('react-root')).render(<FloorPlanner />);
     ReactDOM.createRoot(document.getElementById('french-root')).render(<FrenchLayoutsHub />);
 </script>
 </body>
