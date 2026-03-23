@@ -666,6 +666,43 @@
         }));
       }
 
+      function inverseRotatePatternPolygon(shapePoints) {
+        if (!shapePoints.length || layoutRotation === 0 || !points.length) {
+          return shapePoints;
+        }
+
+        const rad = -layoutRotation * Math.PI / 180;
+        return shapePoints.map(point => {
+          const dx = point.x - rotationCenter.x;
+          const dy = point.y - rotationCenter.y;
+          return {
+            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+
+      function inverseTransformPatternPolygon(shapePoints) {
+        const shiftedPoints = shapePoints.map(point => ({
+          x: point.x - layoutOffsetX,
+          y: point.y - layoutOffsetY
+        }));
+
+        if (!shiftedPoints.length || layoutRotation === 0 || !points.length) {
+          return shiftedPoints;
+        }
+
+        const rad = -layoutRotation * Math.PI / 180;
+        return shiftedPoints.map(point => {
+          const dx = point.x - rotationCenter.x;
+          const dy = point.y - rotationCenter.y;
+          return {
+            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
+            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
+          };
+        });
+      }
+
       function handleBoardClick(e, key) {
         e.stopPropagation();
 
@@ -732,10 +769,13 @@
         draftRulerStart,
         draftRulerEnd,
         isMeasuring,
+        rotationCenter,
         svgRef,
         toggledPlanks,
         rotatedPoints,
         transformPatternPolygon,
+        inverseRotatePatternPolygon,
+        inverseTransformPatternPolygon,
         finalizeMeasurement,
         handleBoardClick,
         handleClick,
@@ -769,21 +809,31 @@
       if (core.isClosed) {
         const stepX = Math.SQRT2 * tileWidth;
         const stepY = tileSize / Math.SQRT2;
-        const minX = Math.min(...core.rotatedPoints.map(point => point.x)) - 650;
-        const maxX = Math.max(...core.rotatedPoints.map(point => point.x)) + 650;
-        const centerY = (
-          Math.min(...core.rotatedPoints.map(point => point.y))
-          + Math.max(...core.rotatedPoints.map(point => point.y))
-        ) / 2;
+        const localRoomPoints = core.inverseRotatePatternPolygon(core.rotatedPoints);
+        const localXs = localRoomPoints.map(point => point.x);
+        const localYs = localRoomPoints.map(point => point.y);
+        const offsetReach = Math.abs(core.layoutOffsetX) + Math.abs(core.layoutOffsetY);
+        const paddingX = tileSize + stepX * 2 + offsetReach;
+        const paddingY = tileSize + stepY * 2 + offsetReach;
+        const minX = Math.min(...localXs) - paddingX;
+        const maxX = Math.max(...localXs) + paddingX;
+        const minY = Math.min(...localYs) - paddingY;
+        const maxY = Math.max(...localYs) + paddingY;
+        const baseX = core.rotationCenter.x;
+        const baseY = core.rotationCenter.y;
+        const columnStart = Math.floor((minX - baseX - stepX / 2) / stepX) - 1;
+        const columnEnd = Math.ceil((maxX - baseX + stepX / 2) / stepX) + 1;
+        const rowStart = Math.floor((minY - baseY) / stepY) - 1;
+        const rowEnd = Math.ceil((maxY - baseY) / stepY) + 1;
 
-        for (let rowIndex = -20; rowIndex <= 20; rowIndex++) {
+        for (let rowIndex = rowStart; rowIndex <= rowEnd; rowIndex++) {
           const shiftX = rowIndex % 2 !== 0 ? stepX / 2 : 0;
           const angle = rowIndex % 2 === 0 ? 45 : -45;
-          const cy = centerY + rowIndex * stepY;
+          const cy = baseY + rowIndex * stepY;
 
-          for (let x = minX; x < maxX; x += stepX) {
-            const key = `${rowIndex}-${x}`;
-            const cx = x + shiftX;
+          for (let columnIndex = columnStart; columnIndex <= columnEnd; columnIndex++) {
+            const key = `${rowIndex}-${columnIndex}`;
+            const cx = baseX + columnIndex * stepX + shiftX;
             const corners = rotateRectangleAroundCenter([
               { x: cx - tileSize / 2, y: cy - tileWidth / 2 },
               { x: cx + tileSize / 2, y: cy - tileWidth / 2 },
@@ -1210,7 +1260,7 @@
         <div>
           <div className="mb-4" style={{ maxWidth: "360px" }}>
             <label style={{ marginBottom: "6px", fontWeight: "bold" }}>
-              Тип французской укладки:
+              Варианты укладки:
             </label>
             <select
               value={selectedLayout}
