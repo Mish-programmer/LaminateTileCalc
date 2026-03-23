@@ -4,25 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Калькулятор укладки ламината</title>
-<script src="plotly-latest.min.js"></script>
 <script src="react.development.js"></script>
 <script src="react-dom.development.js"></script>
 <script src="babel.min.js"></script>
 <style>
-    body { font-family: sans-serif; margin: 0; padding: 0; }
-    .tabs { display: flex; border-bottom: 2px solid #ccc; background: #f8f8f8; }
-    .tabs button {
-      padding: 10px 20px;
-      cursor: pointer;
-      background: none;
-      border: none;
-      border-bottom: 3px solid transparent;
-      font-size: 16px;
-    }
-    .tabs button.active { border-bottom-color: #007bff; font-weight: bold; }
-    .tab-content { display: none; padding: 20px; }
-    .tab-content.active { display: block; }
-
     body {
       font-family: sans-serif;
       margin: 20px;
@@ -35,14 +20,6 @@
       margin-left: 8px;
       width: 80px;
     }
-    #plot {
-      width: 100%;
-      height: 400px;
-      max-width: 100%;
-    }
-    #results {
-      margin-top: 20px;
-    }
     @media (max-width: 600px) {
       input {
         width: 100%;
@@ -53,231 +30,492 @@
       }
     }
 .cls-1 {fill: #3f4f75;} .cls-2 {fill: #80cfbe;} .cls-3 {fill: #fff;}
-#plotlyTab body { margin:0; }
 </style>
 </head>
 <body>
-<div class="tabs">
-<button class="active" onclick="showTab('plotlyTab', this)">Простой калькулятор</button>
-<button onclick="showTab('frenchTab', this)">Проектный расчет</button>
-</div>
-<div class="tab-content active" id="plotlyTab">
-<h1>Калькулятор коллекций FLOOREO PEAKS и FLOOREO WATERFALLS</h1>
-<label>Ширина комнаты (мм): <input id="width" step="50" type="number" value="4000"/></label>
-<label>Длина комнаты (мм): <input id="height" step="50" type="number" value="5000"/></label>
-<label>Добавить ряд по ширине: <input id="widthMargin" step="1" type="number" value="6"/></label>
-<label>Добавить ряд по длине: <input id="heightMargin" step="1" type="number" value="2"/></label>
-<label>Смещение укладки по X (мм): <input id="offsetX" step="10" type="number" value="0"/></label>
-<label>Смещение укладки по Y (мм): <input id="offsetY" step="10" type="number" value="300"/></label>
-<label>Поворот укладки (градусы): <input id="roomRotation" max="180" min="-180" step="1" type="number" value="0"/></label>
-<div id="plot"></div>
-<div id="results"></div>
-</div>
-<div class="tab-content" id="frenchTab">
 <div id="french-root"></div>
-</div>
-<script>
-     function showTab(id, btn) {
-      document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-      document.querySelectorAll('.tabs button').forEach(button => button.classList.remove('active'));
-      document.getElementById(id).classList.add('active');
-      btn.classList.add('active');
-    }
-</script>
-  <script>
-    const plankLength = 694;
-    const plankWidth = 132;
-    const patternWidth = plankLength;
-    const patternHeight = plankLength + plankWidth;
-    const angle = 45 * Math.PI / 180;
-
-function drawRoom(usableW, usableH, fullW, fullH, stepX, stepY, startX, startY, offsetXuser, offsetYuser, roomRotDeg) {
-  const plankShapes = [];
-  let totalCount = 0;
-  let insideRoomCount = 0;
-
-  const shiftX = offsetXuser || 0;
-  const shiftY = offsetYuser || 0;
-  const roomX = startX;
-  const roomY = startY;
-
-  const roomCx = roomX + fullW / 2;
-  const roomCy = roomY + fullH / 2;
-  const rad = roomRotDeg * Math.PI / 180;
-
-  const maskDeltaW = (fullW - usableW) / 2;
-  const maskDeltaH = (fullH - usableH) / 2;
-  const maskX = roomX + maskDeltaW;
-  const maskY = roomY + maskDeltaH;
-  const maskW = usableW;
-  const maskH = usableH;
-
-  const virtualX0 = roomX - 1000;
-  const virtualY0 = roomY - 1000;
-  const virtualX1 = roomX + fullW + 1000;
-  const virtualY1 = roomY + fullH;
-
-  const cols = Math.ceil((virtualX1 - virtualX0) / stepX) + 2;
-  const rows = Math.ceil((virtualY1 - virtualY0) / stepY) + 2;
-
-  for (let j = 0; j < rows; j++) {
-    for (let i = 0; i < cols; i++) {
-      const cx = i * stepX + virtualX0 + shiftX;
-      const cy = j * stepY + virtualY0 + shiftY;
-
-      const plankSet = [
-        { x: cx - patternWidth / 2, y: cy - patternHeight / 2, w: plankLength, h: plankWidth, baseColor: "saddlebrown" },
-        { x: cx - patternWidth / 2 + (patternWidth - plankWidth), y: cy - patternHeight / 2 + plankWidth, w: plankWidth, h: plankLength, baseColor: "peru" }
-      ];
-
-      for (const { x, y, w, h, baseColor } of plankSet) {
-        const coords = rotateRect(x, y, w, h, cx, cy, angle);
-        const isInsideMask = isFullyInsideRotatedRoom(coords, maskX, maskY, maskW, maskH, roomCx, roomCy, rad);
-        const isInsideRoom = isFullyInsideRotatedRoom(coords, roomX, roomY, fullW, fullH, roomCx, roomCy, rad);
-        const rotatedCoords = coords.map(([px, py]) => rotatePoint(px, py, roomCx, roomCy, rad));
-
-        plankShapes.push({
-          type: "path",
-          path: `M${rotatedCoords.map(p => p.join(",")).join("L")}Z`,
-          fillcolor: isInsideMask ? baseColor : "rgba(0,0,0,0)",
-          line: {
-            width: 0.5,
-            color: isInsideMask ? "black" : "gray",
-            dash: isInsideMask ? "solid" : "dot"
-          }
-        });
-
-        if (isInsideMask) totalCount++;
-        if (isInsideRoom) insideRoomCount++;
-      }
-    }
-  }
-
-  const roomRect = rotateRect(roomX, roomY, fullW, fullH, roomCx, roomCy, -rad)
-    .map(([x, y]) => rotatePoint(x, y, roomCx, roomCy, rad));
-
-  const outline = {
-    type: "path",
-    path: `M${roomRect.map(p => p.join(",")).join("L")}Z`,
-    line: { color: "black", width: 2 },
-    fillcolor: "rgba(0,0,0,0)"
-  };
-
-  return { shapes: [...plankShapes, outline], totalCount, insideRoomCount };
-}
-
-function rotatePoint(x, y, cx, cy, ang) {
-  const dx = x - cx;
-  const dy = y - cy;
-  const rx = cx + dx * Math.cos(ang) - dy * Math.sin(ang);
-  const ry = cy + dx * Math.sin(ang) + dy * Math.cos(ang);
-  return [rx, ry];
-}
-
-function isFullyInsideRotatedRoom(coords, roomX, roomY, roomW, roomH, cx, cy, rad) {
-  return coords
-    .map(([x, y]) => rotatePoint(x, y, cx, cy, rad))
-    .every(([x, y]) => x >= roomX && x <= roomX + roomW && y >= roomY && y <= roomY + roomH);
-}
-
-function rotateRect(x, y, w, h, cx, cy, ang) {
-  const corners = [[x, y], [x+w, y], [x+w, y+h], [x, y+h]];
-  return corners.map(([px, py]) => {
-    const dx = px - cx;
-    const dy = py - cy;
-    const rx = cx + dx * Math.cos(ang) - dy * Math.sin(ang);
-    const ry = cy + dx * Math.sin(ang) + dy * Math.cos(ang);
-    return [rx, ry];
-  });
-}
-
-function calculate() {
-  const width = parseFloat(document.getElementById("width").value);
-  const height = parseFloat(document.getElementById("height").value);
-  const widthMargin = 100*parseFloat(document.getElementById("widthMargin").value) || 0;
-  const heightMargin = 200*parseFloat(document.getElementById("heightMargin").value) || 0;
-  const offsetX = parseFloat(document.getElementById("offsetX").value) || 0;
-  const offsetY = parseFloat(document.getElementById("offsetY").value) || 0;
-  const roomRotation = parseFloat(document.getElementById("roomRotation").value) || 0;
-
-  const usableWidth = width + widthMargin;
-  const usableHeight = height + heightMargin;
-
-  const stepX = plankWidth * Math.sqrt(2);
-  const stepY = plankLength * Math.sqrt(2);
-  const startX = - stepX * 2;
-  const startY = - stepY * 2;
-
-  const { shapes, totalCount, insideRoomCount } = drawRoom(usableWidth, usableHeight, width, height, stepX, stepY, startX, startY, offsetX, offsetY, roomRotation);
-
-  const areaRoom = width * height / 1000000;
-  const full = insideRoomCount;
-  const cut = totalCount - insideRoomCount;
-  const count = totalCount;
-  const peaksBoxes = Math.ceil(count / 12);
-  const waterfallsBoxes = Math.ceil(count / 15);
-
-  document.getElementById("results").innerHTML = `
-    <p>Количество досок: <b>${count}</b></p>
-    <p>Из них целых: <b>${full}</b>, обрезанных: <b>${cut}</b></p>
-    <p>Площадь комнаты: <b>${areaRoom.toFixed(2)} м²</b></p>
-    <p><b>Коллекция PEAKS: ${peaksBoxes} уп.</b> (${Math.round(peaksBoxes*1.10*100)/100} м²)</p>
-    <p><b>Коллекция WATERFALLS: ${waterfallsBoxes} уп.</b> (${Math.round(waterfallsBoxes*1.374*100)/100} м²)</p>
-  `;
-
-  Plotly.react("plot", [{
-    type: "scatter",
-    x: [0], y: [0], mode: "markers", marker: {opacity: 0}
-  }], {
-    margin: {t: 0, l: 0, r: 0, b: 0},
-    xaxis: {
-      visible: false,
-      scaleanchor: "y",
-      range: (window.prevXRange || undefined)
-    },
-    yaxis: {
-      visible: false,
-      range: (window.prevYRange || undefined)
-    },
-    shapes
-  }).then(gd => {
-    const layout = gd.layout;
-    window.prevXRange = layout.xaxis.range;
-    window.prevYRange = layout.yaxis.range;
-
-    gd.on('plotly_relayout', ev => {
-      const layout = gd.layout;
-
-      if (ev['xaxis.range[0]'] && ev['xaxis.range[1]']) {
-        window.prevXRange = [ev['xaxis.range[0]'], ev['xaxis.range[1]']];
-      } else if (ev['xaxis.autorange']) {
-        window.prevXRange = layout.xaxis.range;
-      }
-
-      if (ev['yaxis.range[0]'] && ev['yaxis.range[1]']) {
-        window.prevYRange = [ev['yaxis.range[0]'], ev['yaxis.range[1]']];
-      } else if (ev['yaxis.autorange']) {
-        window.prevYRange = layout.yaxis.range;
-      }
-    });
-  });
-}
-
-  document.querySelectorAll("input").forEach(input => input.addEventListener("input", calculate));
-  calculate();
-  </script>
 <script type="text/babel">
      const { useState, useRef, useMemo, useEffect } = React;
 
-    function EnglishHerringbonePlanner({ roomState }) {
-      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, dragMeasureStart, setDragMeasureStart, dragMeasureMoved, setDragMeasureMoved, suppressBoardClick, setSuppressBoardClick, isMeasuring, setIsMeasuring, resetCurrentLayoutSettings } = roomState;
-      const [tileSize] = useState(694);
-      const [tileWidth] = useState(132);
+    const VIEWPORT_WIDTH = 800;
+    const VIEWPORT_HEIGHT = 600;
+    const DEFAULT_VIEWBOX = { minX: 0, minY: 0, width: 8000, height: 6000 };
+    const GEOMETRY_EPSILON = 0.000001;
+
+    function projectPointToSegment(point, a, b) {
+      const abx = b.x - a.x;
+      const aby = b.y - a.y;
+      const apx = point.x - a.x;
+      const apy = point.y - a.y;
+      const abLenSq = abx * abx + aby * aby;
+      if (abLenSq === 0) return a;
+
+      const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
+      return {
+        x: a.x + abx * t,
+        y: a.y + aby * t
+      };
+    }
+
+    function polygonArea(points) {
+      let area = 0;
+      for (let i = 0; i < points.length; i++) {
+        const j = (i + 1) % points.length;
+        area += points[i].x * points[j].y - points[j].x * points[i].y;
+      }
+      return Math.abs(area / 2);
+    }
+
+    function pointOnSegment(point, start, end) {
+      const cross = (end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x);
+      if (Math.abs(cross) > GEOMETRY_EPSILON) return false;
+
+      const minX = Math.min(start.x, end.x) - GEOMETRY_EPSILON;
+      const maxX = Math.max(start.x, end.x) + GEOMETRY_EPSILON;
+      const minY = Math.min(start.y, end.y) - GEOMETRY_EPSILON;
+      const maxY = Math.max(start.y, end.y) + GEOMETRY_EPSILON;
+
+      return point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY;
+    }
+
+    function segmentCrossValue(start, end, point) {
+      return (end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x);
+    }
+
+    function segmentsIntersect(aStart, aEnd, bStart, bEnd) {
+      const cross1 = segmentCrossValue(aStart, aEnd, bStart);
+      const cross2 = segmentCrossValue(aStart, aEnd, bEnd);
+      const cross3 = segmentCrossValue(bStart, bEnd, aStart);
+      const cross4 = segmentCrossValue(bStart, bEnd, aEnd);
+
+      const hasProperIntersection = (
+        ((cross1 > GEOMETRY_EPSILON && cross2 < -GEOMETRY_EPSILON) || (cross1 < -GEOMETRY_EPSILON && cross2 > GEOMETRY_EPSILON))
+        && ((cross3 > GEOMETRY_EPSILON && cross4 < -GEOMETRY_EPSILON) || (cross3 < -GEOMETRY_EPSILON && cross4 > GEOMETRY_EPSILON))
+      );
+
+      if (hasProperIntersection) return true;
+      if (Math.abs(cross1) <= GEOMETRY_EPSILON && pointOnSegment(bStart, aStart, aEnd)) return true;
+      if (Math.abs(cross2) <= GEOMETRY_EPSILON && pointOnSegment(bEnd, aStart, aEnd)) return true;
+      if (Math.abs(cross3) <= GEOMETRY_EPSILON && pointOnSegment(aStart, bStart, bEnd)) return true;
+      if (Math.abs(cross4) <= GEOMETRY_EPSILON && pointOnSegment(aEnd, bStart, bEnd)) return true;
+
+      return false;
+    }
+
+    function polygonHasEdgeIntersection(polygonA, polygonB) {
+      for (let i = 0; i < polygonA.length; i++) {
+        const aStart = polygonA[i];
+        const aEnd = polygonA[(i + 1) % polygonA.length];
+
+        for (let j = 0; j < polygonB.length; j++) {
+          const bStart = polygonB[j];
+          const bEnd = polygonB[(j + 1) % polygonB.length];
+          if (segmentsIntersect(aStart, aEnd, bStart, bEnd)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    function isPointInPolygon(point, polygon) {
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        if (pointOnSegment(point, polygon[j], polygon[i])) {
+          return true;
+        }
+      }
+
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x;
+        const yi = polygon[i].y;
+        const xj = polygon[j].x;
+        const yj = polygon[j].y;
+        const intersect = ((yi > point.y) !== (yj > point.y))
+          && (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function polygonsIntersect(polygonA, polygonB) {
+      if (polygonA.some(point => isPointInPolygon(point, polygonB))) return true;
+      if (polygonB.some(point => isPointInPolygon(point, polygonA))) return true;
+      return polygonHasEdgeIntersection(polygonA, polygonB);
+    }
+
+    function isPolygonFullyInsidePolygon(innerPolygon, outerPolygon) {
+      if (!innerPolygon.every(point => isPointInPolygon(point, outerPolygon))) {
+        return false;
+      }
+
+      return !polygonHasEdgeIntersection(innerPolygon, outerPolygon);
+    }
+
+    function getPolygonBounds(polygon) {
+      const xs = polygon.map(point => point.x);
+      const ys = polygon.map(point => point.y);
+      return {
+        minX: Math.min(...xs),
+        maxX: Math.max(...xs),
+        minY: Math.min(...ys),
+        maxY: Math.max(...ys)
+      };
+    }
+
+    function buildFittedViewBox(sourcePoints) {
+      if (!sourcePoints.length) {
+        return DEFAULT_VIEWBOX;
+      }
+
+      const xs = sourcePoints.map(point => point.x);
+      const ys = sourcePoints.map(point => point.y);
+      const rawMinX = Math.min(...xs);
+      const rawMaxX = Math.max(...xs);
+      const rawMinY = Math.min(...ys);
+      const rawMaxY = Math.max(...ys);
+      const padding = 500;
+
+      let minX = rawMinX - padding;
+      let maxX = rawMaxX + padding;
+      let minY = rawMinY - padding;
+      let maxY = rawMaxY + padding;
+      let width = Math.max(maxX - minX, 1000);
+      let height = Math.max(maxY - minY, 1000);
+
+      const viewportAspect = VIEWPORT_WIDTH / VIEWPORT_HEIGHT;
+      const contentAspect = width / height;
+
+      if (contentAspect > viewportAspect) {
+        const adjustedHeight = width / viewportAspect;
+        const extraHeight = adjustedHeight - height;
+        minY -= extraHeight / 2;
+        height = adjustedHeight;
+      } else {
+        const adjustedWidth = height * viewportAspect;
+        const extraWidth = adjustedWidth - width;
+        minX -= extraWidth / 2;
+        width = adjustedWidth;
+      }
+
+      return { minX, minY, width, height };
+    }
+
+    function buildGridLines(viewBox) {
+      const step = 100;
+      const startX = Math.floor(viewBox.minX / step) * step;
+      const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
+      const startY = Math.floor(viewBox.minY / step) * step;
+      const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
+      const vertical = [];
+      const horizontal = [];
+
+      for (let x = startX; x <= endX; x += step) vertical.push(x);
+      for (let y = startY; y <= endY; y += step) horizontal.push(y);
+
+      return { vertical, horizontal, startX, endX, startY, endY };
+    }
+
+    function rotateRectangleAroundCenter(points, cx, cy, angleDeg) {
+      const rad = angleDeg * Math.PI / 180;
+      return points.map(point => {
+        const dx = point.x - cx;
+        const dy = point.y - cy;
+        return {
+          x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+          y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+        };
+      });
+    }
+
+    function createBoardPolygon(id, points, fillColor, strokeColor, dash, onClick) {
+      return (
+        <polygon
+          key={id}
+          points={points.map(point => `${point.x},${point.y}`).join(" ")}
+          fill={fillColor}
+          stroke={strokeColor}
+          strokeWidth={10}
+          strokeDasharray={dash}
+          onClick={onClick}
+        />
+      );
+    }
+
+    function PlannerToolbar({ core }) {
+      const {
+        isClosed,
+        layoutRotation,
+        setLayoutRotation,
+        layoutOffsetX,
+        setLayoutOffsetX,
+        layoutOffsetY,
+        setLayoutOffsetY,
+        clearMeasurements,
+        reset,
+        undoLastPoint,
+        closePolygon,
+        points
+      } = core;
+
+      return (
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <div className="flex items-center gap-2">
+            <span>Угол:</span>
+            <input
+              type="number"
+              min="-180"
+              max="180"
+              step="1"
+              value={layoutRotation}
+              disabled={!isClosed}
+              onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
+            />
+            <span>°</span>
+            <span>X:</span>
+            <input
+              type="number"
+              step="10"
+              value={layoutOffsetX}
+              disabled={!isClosed}
+              onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
+            />
+            <span>Y:</span>
+            <input
+              type="number"
+              step="10"
+              value={layoutOffsetY}
+              disabled={!isClosed}
+              onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <button onClick={clearMeasurements} className="bg-red-100 px-2 py-1 rounded">Удалить измерения</button>
+          <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
+          <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
+          <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
+        </div>
+      );
+    }
+
+    function PlannerCanvas({ core, pattern }) {
+      const {
+        svgRef,
+        handleClick,
+        handleMouseDown,
+        handleMouseMove,
+        handleMouseUp,
+        viewBox,
+        gridLines,
+        measurements,
+        draftRulerStart,
+        draftRulerEnd,
+        rulerLength,
+        rulerMidX,
+        rulerMidY,
+        rotatedPoints,
+        points,
+        isClosed,
+        lastPoint,
+        mousePos,
+        startMeasurement
+      } = core;
+
+      return (
+        <svg
+          ref={svgRef}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          width={VIEWPORT_WIDTH}
+          height={VIEWPORT_HEIGHT}
+          viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="border border-gray-400 bg-white cursor-crosshair"
+        >
+          <g>
+            {gridLines.vertical.map(x => (
+              <line
+                key={`grid-v-${x}`}
+                x1={x}
+                y1={gridLines.startY}
+                x2={x}
+                y2={gridLines.endY}
+                stroke="#eee"
+                strokeWidth={5}
+              />
+            ))}
+            {gridLines.horizontal.map(y => (
+              <line
+                key={`grid-h-${y}`}
+                x1={gridLines.startX}
+                y1={y}
+                x2={gridLines.endX}
+                y2={y}
+                stroke="#eee"
+                strokeWidth={10}
+              />
+            ))}
+            {pattern}
+            {measurements.map((measurement, index) => {
+              const length = Math.hypot(
+                measurement.end.x - measurement.start.x,
+                measurement.end.y - measurement.start.y
+              );
+              const midX = (measurement.start.x + measurement.end.x) / 2;
+              const midY = (measurement.start.y + measurement.end.y) / 2;
+              return (
+                <g key={`measurement-${index}`}>
+                  <line
+                    x1={measurement.start.x}
+                    y1={measurement.start.y}
+                    x2={measurement.end.x}
+                    y2={measurement.end.y}
+                    stroke="#d62828"
+                    strokeWidth={12}
+                  />
+                  <text
+                    x={midX}
+                    y={midY - 20}
+                    fontSize={90}
+                    fill="#d62828"
+                    textAnchor="middle"
+                    stroke="#ffffff"
+                    strokeWidth={10}
+                    paintOrder="stroke"
+                  >
+                    {`${length.toFixed(0)} мм`}
+                  </text>
+                </g>
+              );
+            })}
+            {draftRulerStart && draftRulerEnd && (
+              <g>
+                <line
+                  x1={draftRulerStart.x}
+                  y1={draftRulerStart.y}
+                  x2={draftRulerEnd.x}
+                  y2={draftRulerEnd.y}
+                  stroke="#d62828"
+                  strokeWidth={12}
+                />
+                <text
+                  x={rulerMidX}
+                  y={rulerMidY - 20}
+                  fontSize={90}
+                  fill="#d62828"
+                  textAnchor="middle"
+                  stroke="#ffffff"
+                  strokeWidth={10}
+                  paintOrder="stroke"
+                >
+                  {`${rulerLength.toFixed(0)} мм`}
+                </text>
+              </g>
+            )}
+            {rotatedPoints.map((point, index) => (
+              <g key={`point-${index}`}>
+                <circle cx={point.x} cy={point.y} r={20} fill="red" />
+                <text x={point.x + 30} y={point.y - 30} fontSize={120} fill="black">{index + 1}</text>
+              </g>
+            ))}
+            {rotatedPoints.map((point, index) => {
+              const next = rotatedPoints[(index + 1) % rotatedPoints.length];
+              if (index === points.length - 1 && !isClosed) return null;
+              return (
+                <line
+                  key={`edge-${index}`}
+                  x1={point.x}
+                  y1={point.y}
+                  x2={next.x}
+                  y2={next.y}
+                  stroke="black"
+                  strokeWidth={10}
+                  onClick={(e) => startMeasurement(e, point, next)}
+                />
+              );
+            })}
+            {lastPoint && mousePos && !isClosed && (
+              <line
+                x1={lastPoint.x}
+                y1={lastPoint.y}
+                x2={mousePos.x}
+                y2={mousePos.y}
+                stroke="orange"
+                strokeWidth={10}
+                strokeDasharray="10,10"
+              />
+            )}
+          </g>
+        </svg>
+      );
+    }
+
+    function PlannerLayout({ title, stats, core, pattern }) {
+      return (
+        <div className="p-4">
+          <h1 className="text-xl font-bold mb-2">{title}</h1>
+          <div className="flex flex-wrap gap-4 mb-2">
+            {stats.map((item, index) => (
+              <div key={`stat-${index}`}>{item}</div>
+            ))}
+          </div>
+          {core.hintText && (
+            <div className="mb-2 text-sm text-gray-700">{core.hintText}</div>
+          )}
+          <PlannerToolbar core={core} />
+          <PlannerCanvas core={core} pattern={pattern} />
+        </div>
+      );
+    }
+
+    function usePlannerCore(roomState) {
+      const {
+        points,
+        setPoints,
+        isClosed,
+        setIsClosed,
+        mousePos,
+        setMousePos,
+        layoutRotation,
+        setLayoutRotation,
+        layoutOffsetX,
+        setLayoutOffsetX,
+        layoutOffsetY,
+        setLayoutOffsetY,
+        viewBox,
+        setViewBox,
+        measurements,
+        setMeasurements,
+        draftRulerStart,
+        setDraftRulerStart,
+        draftRulerEnd,
+        setDraftRulerEnd,
+        dragMeasureStart,
+        setDragMeasureStart,
+        dragMeasureMoved,
+        setDragMeasureMoved,
+        suppressBoardClick,
+        setSuppressBoardClick,
+        isMeasuring,
+        setIsMeasuring,
+        resetCurrentLayoutSettings
+      } = roomState;
+
       const svgRef = useRef(null);
       const [toggledPlanks, setToggledPlanks] = useState(new Set());
-      const viewportWidth = 800;
-      const viewportHeight = 600;
-      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
+      const rotatedPoints = points;
+
+      const rotationCenter = useMemo(() => {
+        if (!points.length) return { x: 0, y: 0 };
+        const xs = points.map(point => point.x);
+        const ys = points.map(point => point.y);
+        return {
+          x: (Math.min(...xs) + Math.max(...xs)) / 2,
+          y: (Math.min(...ys) + Math.max(...ys)) / 2
+        };
+      }, [points]);
 
       function getSvgCoordinates(e) {
         const svg = svgRef.current;
@@ -288,18 +526,25 @@ function calculate() {
         return { x: transformed.x, y: transformed.y };
       }
 
-      function projectPointToSegment(point, a, b) {
-        const abx = b.x - a.x;
-        const aby = b.y - a.y;
-        const apx = point.x - a.x;
-        const apy = point.y - a.y;
-        const abLenSq = abx * abx + aby * aby;
-        if (abLenSq === 0) return a;
-        const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
-        return {
-          x: a.x + abx * t,
-          y: a.y + aby * t
-        };
+      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
+        if (!draftRulerStart) return false;
+        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
+        const shouldSave = length >= 15;
+
+        if (shouldSave) {
+          setDraftRulerEnd(endPoint);
+          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
+          if (suppressNextBoardClick) {
+            setSuppressBoardClick(true);
+          }
+        }
+
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setIsMeasuring(false);
+        return shouldSave;
       }
 
       function startMeasurement(e, start, end) {
@@ -328,25 +573,6 @@ function calculate() {
         finalizeMeasurement(coords, true);
       }
 
-      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
-        if (!draftRulerStart) return false;
-        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
-        const shouldSave = length >= 15;
-        if (shouldSave) {
-          setDraftRulerEnd(endPoint);
-          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
-          if (suppressNextBoardClick) {
-            setSuppressBoardClick(true);
-          }
-        }
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(false);
-        return shouldSave;
-      }
-
       function handleClick(e) {
         if (isClosed) {
           if (isMeasuring && !dragMeasureStart) {
@@ -354,12 +580,14 @@ function calculate() {
           }
           return;
         }
+
         const { x, y } = getSvgCoordinates(e);
         setPoints([...points, { x, y }]);
       }
 
       function handleMouseMove(e) {
         const coords = getSvgCoordinates(e);
+
         if (dragMeasureStart) {
           setMousePos(coords);
           setDraftRulerEnd(coords);
@@ -369,11 +597,13 @@ function calculate() {
           }
           return;
         }
+
         if (isMeasuring) {
           setMousePos(coords);
           setDraftRulerEnd(coords);
           return;
         }
+
         if (isClosed) return;
         setMousePos(coords);
       }
@@ -385,6 +615,13 @@ function calculate() {
       function undoLastPoint() {
         if (isClosed || points.length === 0) return;
         setPoints(points.slice(0, -1));
+      }
+
+      function clearMeasurements() {
+        setMeasurements([]);
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setIsMeasuring(false);
       }
 
       function reset() {
@@ -400,52 +637,13 @@ function calculate() {
         setDragMeasureMoved(false);
         setSuppressBoardClick(false);
         setIsMeasuring(false);
-        setViewBox(defaultViewBox);
+        setViewBox(DEFAULT_VIEWBOX);
       }
 
-      function polygonArea(pts) {
-        let area = 0;
-        for (let i = 0; i < pts.length; i++) {
-          const j = (i + 1) % pts.length;
-          area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-        }
-        return Math.abs(area / 2);
-      }
-
-      function rotatePolygon(pts, degrees) {
-        if (!pts.length || degrees === 0) return pts;
-
-        const xs = pts.map(p => p.x);
-        const ys = pts.map(p => p.y);
-        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        const rad = (degrees * Math.PI) / 180;
-
-        return pts.map(p => {
-          const dx = p.x - cx;
-          const dy = p.y - cy;
-          return {
-            x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
-            y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
-          };
-        });
-      }
-
-      const rotatedPoints = points;
-      const rotationCenter = useMemo(() => {
-        if (!points.length) return { x: 0, y: 0 };
-        const xs = points.map(point => point.x);
-        const ys = points.map(point => point.y);
-        return {
-          x: (Math.min(...xs) + Math.max(...xs)) / 2,
-          y: (Math.min(...ys) + Math.max(...ys)) / 2
-        };
-      }, [points]);
-
-      function rotatePatternPolygon(pts) {
-        if (!pts.length || layoutRotation === 0 || !points.length) return pts;
-        const rad = (layoutRotation * Math.PI) / 180;
-        return pts.map(point => {
+      function rotatePatternPolygon(shapePoints) {
+        if (!shapePoints.length || layoutRotation === 0 || !points.length) return shapePoints;
+        const rad = layoutRotation * Math.PI / 180;
+        return shapePoints.map(point => {
           const dx = point.x - rotationCenter.x;
           const dy = point.y - rotationCenter.y;
           return {
@@ -455,11 +653,32 @@ function calculate() {
         });
       }
 
-      function transformPatternPolygon(pts) {
-        return rotatePatternPolygon(pts).map(point => ({
+      function transformPatternPolygon(shapePoints) {
+        return rotatePatternPolygon(shapePoints).map(point => ({
           x: point.x + layoutOffsetX,
           y: point.y + layoutOffsetY
         }));
+      }
+
+      function handleBoardClick(e, key) {
+        e.stopPropagation();
+
+        if (suppressBoardClick) {
+          setSuppressBoardClick(false);
+          return;
+        }
+
+        if (isMeasuring) {
+          const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
+          if (savedMeasurement) return;
+        }
+
+        setToggledPlanks(prev => {
+          const next = new Set(prev);
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
+          return next;
+        });
       }
 
       useEffect(() => {
@@ -468,642 +687,161 @@ function calculate() {
         }
       }, [layoutRotation, isClosed]);
 
-      const area = isClosed ? polygonArea(rotatedPoints) : 0;
-      const areaM2 = (area / 1_000_000).toFixed(2);
-      let planksNeeded = 0, fullPlanks = 0, cutPlanks = 0;
-      const lastPoint = points[points.length - 1];
-      let hintText = "";
-      if (lastPoint && mousePos && !isClosed) {
-        const dx = mousePos.x - lastPoint.x;
-        const dy = mousePos.y - lastPoint.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-        hintText = `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
-      }
-
-      const pattern = [];
-      const isPointInPolygon = (point, polygon) => {
-        let inside = false;
-        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-          const xi = polygon[i].x, yi = polygon[i].y;
-          const xj = polygon[j].x, yj = polygon[j].y;
-          const intersect = ((yi > point.y) !== (yj > point.y)) &&
-            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
-          if (intersect) inside = !inside;
-        }
-        return inside;
-      };
-      const getPolygonBounds = (polygon) => {
-        const xs = polygon.map(point => point.x);
-        const ys = polygon.map(point => point.y);
-        return {
-          minX: Math.min(...xs),
-          maxX: Math.max(...xs),
-          minY: Math.min(...ys),
-          maxY: Math.max(...ys)
-        };
-      };
-      function buildFittedViewBox(sourcePoints) {
-        if (!sourcePoints.length) {
-          return defaultViewBox;
-        }
-
-        const xs = sourcePoints.map(p => p.x);
-        const ys = sourcePoints.map(p => p.y);
-        const rawMinX = Math.min(...xs);
-        const rawMaxX = Math.max(...xs);
-        const rawMinY = Math.min(...ys);
-        const rawMaxY = Math.max(...ys);
-        const padding = 500;
-
-        let minX = rawMinX - padding;
-        let maxX = rawMaxX + padding;
-        let minY = rawMinY - padding;
-        let maxY = rawMaxY + padding;
-
-        let width = Math.max(maxX - minX, 1000);
-        let height = Math.max(maxY - minY, 1000);
-        const viewportAspect = viewportWidth / viewportHeight;
-        const contentAspect = width / height;
-
-        if (contentAspect > viewportAspect) {
-          const adjustedHeight = width / viewportAspect;
-          const extraHeight = adjustedHeight - height;
-          minY -= extraHeight / 2;
-          height = adjustedHeight;
-        } else {
-          const adjustedWidth = height * viewportAspect;
-          const extraWidth = adjustedWidth - width;
-          minX -= extraWidth / 2;
-          width = adjustedWidth;
-        }
-
-        return { minX, minY, width, height };
-      }
-
       useEffect(() => {
         if (!isClosed) return;
         setViewBox(buildFittedViewBox(rotatedPoints));
       }, [layoutRotation]);
 
-      const gridLines = useMemo(() => {
-        const step = 100;
-        const startX = Math.floor(viewBox.minX / step) * step;
-        const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
-        const startY = Math.floor(viewBox.minY / step) * step;
-        const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
-        const vertical = [];
-        const horizontal = [];
-
-        for (let x = startX; x <= endX; x += step) {
-          vertical.push(x);
-        }
-
-        for (let y = startY; y <= endY; y += step) {
-          horizontal.push(y);
-        }
-
-        return { vertical, horizontal, startX, endX, startY, endY };
-      }, [viewBox]);
-
-      if (isClosed) {
-	const stepX = Math.SQRT2 * tileWidth;
-	const stepY = tileSize  / Math.SQRT2;
-        const minX = Math.min(...rotatedPoints.map(p => p.x)) - 650;
-        const maxX = Math.max(...rotatedPoints.map(p => p.x)) + 650;
-        const centerY = (Math.min(...rotatedPoints.map(p => p.y)) + Math.max(...rotatedPoints.map(p => p.y))) / 2;
-
-        for (let rowIndex = -20; rowIndex <= 20; rowIndex++) {
-		const shiftX = rowIndex % 2 !== 0 ? stepX / 2 : 0;
-		const shiftY = 0;
-          const angle = rowIndex % 2 === 0 ? 45 : -45;
-          const cy = centerY + rowIndex * stepY;
-
-          for (let x = minX; x < maxX; x += stepX) {
-            const cx = x + shiftX;
-            const corners = [
-              { x: cx - tileSize / 2, y: cy - tileWidth / 2 },
-              { x: cx + tileSize / 2, y: cy - tileWidth / 2 },
-              { x: cx + tileSize / 2, y: cy + tileWidth / 2 },
-              { x: cx - tileSize / 2, y: cy + tileWidth / 2 },
-            ].map(p => {
-              const rad = (angle * Math.PI) / 180;
-              const dx = p.x - cx;
-              const dy = p.y - cy;
-              return {
-                x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
-                y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
-              };
-            });
-            const transformedCorners = transformPatternPolygon(corners);
-
-            const isInside = transformedCorners.some(c => isPointInPolygon(c, rotatedPoints));
-            const key = `${rowIndex}-${x}`;
-            const manuallyToggled = toggledPlanks.has(key);
-            const finalVisible = manuallyToggled ? !isInside : isInside;
-
-            if (finalVisible) {
-              planksNeeded++;
-              const allInside = transformedCorners.every(c => isPointInPolygon(c, rotatedPoints));
-              if (allInside) fullPlanks++;
-              else cutPlanks++;
-            }
-
-            const fillColor = manuallyToggled
-              ? "lightgray"
-              : isInside
-                ? (angle === 45 ? "#deb887" : "#a1866f")
-                : "#ffffff";
-
-            const strokeColor = finalVisible ? "#555" : "gray";
-            const dash = finalVisible ? "" : "20,20";
-
-            pattern.push(
-              <polygon
-                key={`plank-${rowIndex}-${x}`}
-                points={transformedCorners.map(point => `${point.x},${point.y}`).join(" ")}
-                fill={fillColor}
-                stroke={strokeColor}
-                strokeWidth={10}
-                strokeDasharray={dash}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (suppressBoardClick) {
-                    setSuppressBoardClick(false);
-                    return;
-                  }
-                  if (isMeasuring) {
-                    const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
-                    if (savedMeasurement) return;
-                  }
-                  setToggledPlanks(prev => {
-                    const newSet = new Set(prev);
-                    const key = `${rowIndex}-${x}`;
-                    if (newSet.has(key)) newSet.delete(key);
-                    else newSet.add(key);
-                    return newSet;
-                  });
-                }}
-              />
-            );
-          }
-        }
-      }
-
+      const area = isClosed ? polygonArea(rotatedPoints) : 0;
+      const areaM2 = (area / 1_000_000).toFixed(2);
+      const lastPoint = points[points.length - 1];
+      const hintText = lastPoint && mousePos && !isClosed
+        ? (() => {
+            const dx = mousePos.x - lastPoint.x;
+            const dy = mousePos.y - lastPoint.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+            return `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
+          })()
+        : "";
+      const gridLines = useMemo(() => buildGridLines(viewBox), [viewBox]);
       const rulerLength = draftRulerStart && draftRulerEnd
         ? Math.hypot(draftRulerEnd.x - draftRulerStart.x, draftRulerEnd.y - draftRulerStart.y)
         : 0;
       const rulerMidX = draftRulerStart && draftRulerEnd ? (draftRulerStart.x + draftRulerEnd.x) / 2 : 0;
       const rulerMidY = draftRulerStart && draftRulerEnd ? (draftRulerStart.y + draftRulerEnd.y) / 2 : 0;
 
-      return (
-        <div className="p-4">
-          <h1 className="text-xl font-bold mb-2">Английская елка</h1>
-          <div className="flex flex-wrap gap-4 mb-2">
-            <div>Площадь: {areaM2} м²</div>
-            <div>Досок: {planksNeeded} (целых: {fullPlanks}, рез: {cutPlanks})</div>
-            <div>PEAKS: {Math.ceil(planksNeeded / 12)} уп. ({(Math.ceil(planksNeeded / 12) * 1.1).toFixed(3)} м²)</div>
-            <div>WATERFALLS: {Math.ceil(planksNeeded / 15)} уп. ({(Math.ceil(planksNeeded / 15) * 1.374).toFixed(3)} м²)</div>
-          </div>
-          {hintText && (
-            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
-          )}
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <div className="flex items-center gap-2">
-              <span>Угол:</span>
-              <input
-                type="number"
-                min="-180"
-                max="180"
-                step="1"
-                value={layoutRotation}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
-              />
-              <span>°</span>
-              <span>X:</span>
-              <input
-                type="number"
-                step="10"
-                value={layoutOffsetX}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
-              />
-              <span>Y:</span>
-              <input
-                type="number"
-                step="10"
-                value={layoutOffsetY}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <button onClick={() => { setMeasurements([]); setDraftRulerStart(null); setDraftRulerEnd(null); setIsMeasuring(false); }} className="bg-red-100 px-2 py-1 rounded">Удалить измерения</button>
-            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
-            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
-            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
-          </div>
-          <svg
-            ref={svgRef}
-            onClick={handleClick}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            width={viewportWidth}
-            height={viewportHeight}
-            viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
-            preserveAspectRatio="xMidYMid meet"
-            className="border border-gray-400 bg-white cursor-crosshair"
-          >
-            <g>
-              {gridLines.vertical.map((x, i) => (
-                <line
-                  key={`v${i}`}
-                  x1={x}
-                  y1={gridLines.startY}
-                  x2={x}
-                  y2={gridLines.endY}
-                  stroke="#eee"
-                  strokeWidth={5}
-                />
-              ))}
-              {gridLines.horizontal.map((y, i) => (
-                <line
-                  key={`h${i}`}
-                  x1={gridLines.startX}
-                  y1={y}
-                  x2={gridLines.endX}
-                  y2={y}
-                  stroke="#eee"
-                  strokeWidth={10}
-                />
-              ))}
-              {pattern}
-              {measurements.map((measurement, index) => {
-                const length = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
-                const midX = (measurement.start.x + measurement.end.x) / 2;
-                const midY = (measurement.start.y + measurement.end.y) / 2;
-                return (
-                  <g key={`measurement-${index}`}>
-                    <line x1={measurement.start.x} y1={measurement.start.y} x2={measurement.end.x} y2={measurement.end.y} stroke="#d62828" strokeWidth={12} />
-                    <text x={midX} y={midY - 20} fontSize={90} fill="#d62828" textAnchor="middle" stroke="#ffffff" strokeWidth={10} paintOrder="stroke">
-                      {`${length.toFixed(0)} мм`}
-                    </text>
-                  </g>
-                );
-              })}
-              {draftRulerStart && draftRulerEnd && (
-                <g>
-                  <line x1={draftRulerStart.x} y1={draftRulerStart.y} x2={draftRulerEnd.x} y2={draftRulerEnd.y} stroke="#d62828" strokeWidth={12} />
-                  <text x={rulerMidX} y={rulerMidY - 20} fontSize={90} fill="#d62828" textAnchor="middle" stroke="#ffffff" strokeWidth={10} paintOrder="stroke">
-                    {`${rulerLength.toFixed(0)} мм`}
-                  </text>
-                </g>
-              )}
-              {rotatedPoints.map((p, i) => (
-                <g key={i}>
-                  <circle cx={p.x} cy={p.y} r={20} fill="red" />
-                  <text x={p.x + 30} y={p.y - 30} fontSize={120} fill="black">{i + 1}</text>
-                </g>
-              ))}
-              {rotatedPoints.map((p, i) => {
-                const next = rotatedPoints[(i + 1) % rotatedPoints.length];
-                if (i === points.length - 1 && !isClosed) return null;
-                return (
-                  <line
-                    key={i}
-                    x1={p.x}
-                    y1={p.y}
-                    x2={next.x}
-                    y2={next.y}
-                    stroke="black"
-                    strokeWidth={10}
-                    onClick={(e) => startMeasurement(e, p, next)}
-                  />
-                );
-              })}
-              {lastPoint && mousePos && !isClosed && (
-                <line
-                  x1={lastPoint.x}
-                  y1={lastPoint.y}
-                  x2={mousePos.x}
-                  y2={mousePos.y}
-                  stroke="orange"
-                  strokeWidth={10}
-                  strokeDasharray="10,10"
-                />
-              )}
-            </g>
-          </svg>
-        </div>
-      );
+      return {
+        points,
+        isClosed,
+        mousePos,
+        layoutRotation,
+        setLayoutRotation,
+        layoutOffsetX,
+        setLayoutOffsetX,
+        layoutOffsetY,
+        setLayoutOffsetY,
+        viewBox,
+        measurements,
+        draftRulerStart,
+        draftRulerEnd,
+        isMeasuring,
+        svgRef,
+        toggledPlanks,
+        rotatedPoints,
+        transformPatternPolygon,
+        finalizeMeasurement,
+        handleBoardClick,
+        handleClick,
+        handleMouseDown,
+        handleMouseMove,
+        handleMouseUp,
+        closePolygon,
+        undoLastPoint,
+        clearMeasurements,
+        reset,
+        startMeasurement,
+        areaM2,
+        hintText,
+        gridLines,
+        lastPoint,
+        rulerLength,
+        rulerMidX,
+        rulerMidY
+      };
+    }
+
+    function EnglishHerringbonePlanner({ roomState }) {
+      const core = usePlannerCore(roomState);
+      const tileSize = 694;
+      const tileWidth = 132;
+      let planksNeeded = 0;
+      let fullPlanks = 0;
+      let cutPlanks = 0;
+      const pattern = [];
+
+      if (core.isClosed) {
+        const stepX = Math.SQRT2 * tileWidth;
+        const stepY = tileSize / Math.SQRT2;
+        const minX = Math.min(...core.rotatedPoints.map(point => point.x)) - 650;
+        const maxX = Math.max(...core.rotatedPoints.map(point => point.x)) + 650;
+        const centerY = (
+          Math.min(...core.rotatedPoints.map(point => point.y))
+          + Math.max(...core.rotatedPoints.map(point => point.y))
+        ) / 2;
+
+        for (let rowIndex = -20; rowIndex <= 20; rowIndex++) {
+          const shiftX = rowIndex % 2 !== 0 ? stepX / 2 : 0;
+          const angle = rowIndex % 2 === 0 ? 45 : -45;
+          const cy = centerY + rowIndex * stepY;
+
+          for (let x = minX; x < maxX; x += stepX) {
+            const key = `${rowIndex}-${x}`;
+            const cx = x + shiftX;
+            const corners = rotateRectangleAroundCenter([
+              { x: cx - tileSize / 2, y: cy - tileWidth / 2 },
+              { x: cx + tileSize / 2, y: cy - tileWidth / 2 },
+              { x: cx + tileSize / 2, y: cy + tileWidth / 2 },
+              { x: cx - tileSize / 2, y: cy + tileWidth / 2 }
+            ], cx, cy, angle);
+            const transformedCorners = core.transformPatternPolygon(corners);
+            const isInside = polygonsIntersect(transformedCorners, core.rotatedPoints);
+            const manuallyToggled = core.toggledPlanks.has(key);
+            const finalVisible = manuallyToggled ? !isInside : isInside;
+
+            if (finalVisible) {
+              planksNeeded++;
+              const allInside = isPolygonFullyInsidePolygon(transformedCorners, core.rotatedPoints);
+              if (allInside) fullPlanks++;
+              else cutPlanks++;
+            }
+
+            pattern.push(createBoardPolygon(
+              `plank-${key}`,
+              transformedCorners,
+              manuallyToggled ? "lightgray" : (isInside ? (angle === 45 ? "#deb887" : "#a1866f") : "#ffffff"),
+              finalVisible ? "#555" : "gray",
+              finalVisible ? "" : "20,20",
+              (e) => core.handleBoardClick(e, key)
+            ));
+          }
+        }
+      }
+
+      const peaksBoxes = Math.ceil(planksNeeded / 12);
+      const waterfallsBoxes = Math.ceil(planksNeeded / 15);
+      const stats = [
+        `Площадь: ${core.areaM2} м²`,
+        `Досок: ${planksNeeded} (целых: ${fullPlanks}, рез: ${cutPlanks})`,
+        `PEAKS: ${peaksBoxes} уп. (${(peaksBoxes * 1.1).toFixed(3)} м²)`,
+        `WATERFALLS: ${waterfallsBoxes} уп. (${(waterfallsBoxes * 1.374).toFixed(3)} м²)`
+      ];
+
+      return <PlannerLayout title="Английская елка" stats={stats} core={core} pattern={pattern} />;
     }
 
     function FrenchHerringbonePlanner({ roomState }) {
-      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, dragMeasureStart, setDragMeasureStart, dragMeasureMoved, setDragMeasureMoved, suppressBoardClick, setSuppressBoardClick, isMeasuring, setIsMeasuring, resetCurrentLayoutSettings } = roomState;
-      const [tileSize] = useState(620);
-      const [tileWidth] = useState(132);
-      const svgRef = useRef(null);
-      const [toggledPlanks, setToggledPlanks] = useState(new Set());
-      const viewportWidth = 800;
-      const viewportHeight = 600;
-      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
-
-      function getSvgCoordinates(e) {
-        const svg = svgRef.current;
-        const point = svg.createSVGPoint();
-        point.x = e.clientX;
-        point.y = e.clientY;
-        const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
-        return { x: transformed.x, y: transformed.y };
-      }
-
-      function projectPointToSegment(point, a, b) {
-        const abx = b.x - a.x;
-        const aby = b.y - a.y;
-        const apx = point.x - a.x;
-        const apy = point.y - a.y;
-        const abLenSq = abx * abx + aby * aby;
-        if (abLenSq === 0) return a;
-        const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
-        return {
-          x: a.x + abx * t,
-          y: a.y + aby * t
-        };
-      }
-
-      function startMeasurement(e, start, end) {
-        if (!isClosed) return;
-        e.stopPropagation();
-        const point = projectPointToSegment(getSvgCoordinates(e), start, end);
-        setDraftRulerStart(point);
-        setDraftRulerEnd(point);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(true);
-      }
-
-      function handleMouseDown(e) {
-        if (!isClosed || e.button !== 0 || isMeasuring) return;
-        const coords = getSvgCoordinates(e);
-        setDragMeasureStart(coords);
-        setDragMeasureMoved(false);
-        setDraftRulerStart(coords);
-        setDraftRulerEnd(coords);
-      }
-
-      function handleMouseUp(e) {
-        if (!dragMeasureStart) return;
-        const coords = getSvgCoordinates(e);
-        finalizeMeasurement(coords, true);
-      }
-
-      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
-        if (!draftRulerStart) return false;
-        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
-        const shouldSave = length >= 15;
-        if (shouldSave) {
-          setDraftRulerEnd(endPoint);
-          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
-          if (suppressNextBoardClick) {
-            setSuppressBoardClick(true);
-          }
-        }
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(false);
-        return shouldSave;
-      }
-
-      function handleClick(e) {
-        if (isClosed) {
-          if (isMeasuring && !dragMeasureStart) {
-            finalizeMeasurement(getSvgCoordinates(e));
-          }
-          return;
-        }
-        const { x, y } = getSvgCoordinates(e);
-        setPoints([...points, { x, y }]);
-      }
-
-      function handleMouseMove(e) {
-        const coords = getSvgCoordinates(e);
-        if (dragMeasureStart) {
-          setMousePos(coords);
-          setDraftRulerEnd(coords);
-          if (!dragMeasureMoved && Math.hypot(coords.x - dragMeasureStart.x, coords.y - dragMeasureStart.y) > 5) {
-            setDragMeasureMoved(true);
-            setIsMeasuring(true);
-          }
-          return;
-        }
-        if (isMeasuring) {
-          setMousePos(coords);
-          setDraftRulerEnd(coords);
-          return;
-        }
-        if (isClosed) return;
-        setMousePos(coords);
-      }
-
-      function closePolygon() {
-        if (points.length >= 3) setIsClosed(true);
-      }
-
-      function undoLastPoint() {
-        if (isClosed || points.length === 0) return;
-        setPoints(points.slice(0, -1));
-      }
-
-      function reset() {
-        setPoints([]);
-        setIsClosed(false);
-        setMousePos(null);
-        setToggledPlanks(new Set());
-        resetCurrentLayoutSettings();
-        setMeasurements([]);
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setSuppressBoardClick(false);
-        setIsMeasuring(false);
-        setViewBox(defaultViewBox);
-      }
-
-      function polygonArea(pts) {
-        let area = 0;
-        for (let i = 0; i < pts.length; i++) {
-          const j = (i + 1) % pts.length;
-          area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-        }
-        return Math.abs(area / 2);
-      }
-
-      function rotatePolygon(pts, degrees) {
-        if (!pts.length || degrees === 0) return pts;
-
-        const xs = pts.map(p => p.x);
-        const ys = pts.map(p => p.y);
-        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        const rad = (degrees * Math.PI) / 180;
-
-        return pts.map(p => {
-          const dx = p.x - cx;
-          const dy = p.y - cy;
-          return {
-            x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
-            y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
-          };
-        });
-      }
-
-      const rotatedPoints = points;
-      const rotationCenter = useMemo(() => {
-        if (!points.length) return { x: 0, y: 0 };
-        const xs = points.map(point => point.x);
-        const ys = points.map(point => point.y);
-        return {
-          x: (Math.min(...xs) + Math.max(...xs)) / 2,
-          y: (Math.min(...ys) + Math.max(...ys)) / 2
-        };
-      }, [points]);
-
-      function rotatePatternPolygon(pts) {
-        if (!pts.length || layoutRotation === 0 || !points.length) return pts;
-        const rad = (layoutRotation * Math.PI) / 180;
-        return pts.map(point => {
-          const dx = point.x - rotationCenter.x;
-          const dy = point.y - rotationCenter.y;
-          return {
-            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
-            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
-          };
-        });
-      }
-      function transformPatternPolygon(pts) {
-        return rotatePatternPolygon(pts).map(point => ({
-          x: point.x + layoutOffsetX,
-          y: point.y + layoutOffsetY
-        }));
-      }
-
-      useEffect(() => {
-        if (isClosed) {
-          setToggledPlanks(new Set());
-        }
-      }, [layoutRotation, isClosed]);
-
-      const area = isClosed ? polygonArea(rotatedPoints) : 0;
-      const areaM2 = (area / 1_000_000).toFixed(2);
-      let planksNeeded = 0, fullPlanks = 0, cutPlanks = 0, aPlanks = 0, bPlanks = 0;
-      const lastPoint = points[points.length - 1];
-      let hintText = "";
-      if (lastPoint && mousePos && !isClosed) {
-        const dx = mousePos.x - lastPoint.x;
-        const dy = mousePos.y - lastPoint.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-        hintText = `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
-      }
-
+      const core = usePlannerCore(roomState);
+      const tileSize = 620;
+      const tileWidth = 132;
+      let planksNeeded = 0;
+      let fullPlanks = 0;
+      let cutPlanks = 0;
+      let aPlanks = 0;
+      let bPlanks = 0;
       const pattern = [];
-      const isPointInPolygon = (point, polygon) => {
-        let inside = false;
-        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-          const xi = polygon[i].x, yi = polygon[i].y;
-          const xj = polygon[j].x, yj = polygon[j].y;
-          const intersect = ((yi > point.y) !== (yj > point.y)) &&
-            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
-          if (intersect) inside = !inside;
-        }
-        return inside;
-      };
-      const getPolygonBounds = (polygon) => {
-        const xs = polygon.map(point => point.x);
-        const ys = polygon.map(point => point.y);
-        return {
-          minX: Math.min(...xs),
-          maxX: Math.max(...xs),
-          minY: Math.min(...ys),
-          maxY: Math.max(...ys)
-        };
-      };
 
-      function buildFittedViewBox(sourcePoints) {
-        if (!sourcePoints.length) {
-          return defaultViewBox;
-        }
-
-        const xs = sourcePoints.map(p => p.x);
-        const ys = sourcePoints.map(p => p.y);
-        const rawMinX = Math.min(...xs);
-        const rawMaxX = Math.max(...xs);
-        const rawMinY = Math.min(...ys);
-        const rawMaxY = Math.max(...ys);
-        const padding = 500;
-
-        let minX = rawMinX - padding;
-        let maxX = rawMaxX + padding;
-        let minY = rawMinY - padding;
-        let maxY = rawMaxY + padding;
-
-        let width = Math.max(maxX - minX, 1000);
-        let height = Math.max(maxY - minY, 1000);
-        const viewportAspect = viewportWidth / viewportHeight;
-        const contentAspect = width / height;
-
-        if (contentAspect > viewportAspect) {
-          const adjustedHeight = width / viewportAspect;
-          const extraHeight = adjustedHeight - height;
-          minY -= extraHeight / 2;
-          height = adjustedHeight;
-        } else {
-          const adjustedWidth = height * viewportAspect;
-          const extraWidth = adjustedWidth - width;
-          minX -= extraWidth / 2;
-          width = adjustedWidth;
-        }
-
-        return { minX, minY, width, height };
-      }
-
-      useEffect(() => {
-        if (!isClosed) return;
-        setViewBox(buildFittedViewBox(rotatedPoints));
-      }, [layoutRotation]);
-
-      const gridLines = useMemo(() => {
-        const step = 100;
-        const startX = Math.floor(viewBox.minX / step) * step;
-        const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
-        const startY = Math.floor(viewBox.minY / step) * step;
-        const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
-        const vertical = [];
-        const horizontal = [];
-
-        for (let x = startX; x <= endX; x += step) vertical.push(x);
-        for (let y = startY; y <= endY; y += step) horizontal.push(y);
-
-        return { vertical, horizontal, startX, endX, startY, endY };
-      }, [viewBox]);
-
-      if (isClosed) {
+      if (core.isClosed) {
         const rowDx = tileSize / Math.SQRT2;
         const rowDy = -tileSize / Math.SQRT2;
         const colDx = tileWidth / Math.SQRT2;
         const colDy = tileWidth / Math.SQRT2;
         const shiftDx = tileWidth / Math.SQRT2;
         const shiftDy = -tileWidth / Math.SQRT2;
-
-        const basisCoords = rotatedPoints.map(point => ({
+        const basisCoords = core.rotatedPoints.map(point => ({
           i: (point.x + point.y) / (2 * colDx),
           j: (point.x - point.y) / (2 * rowDx)
         }));
-
         const minI = Math.floor(Math.min(...basisCoords.map(point => point.i))) - 4;
         const maxI = Math.ceil(Math.max(...basisCoords.map(point => point.i))) + 4;
         const minJ = Math.floor(Math.min(...basisCoords.map(point => point.j))) - 4;
@@ -1118,6 +856,7 @@ function calculate() {
           const topShiftY = boardType === "A" ? shiftDy : -shiftDy;
 
           for (let j = minJ; j <= maxJ; j++) {
+            const key = `${boardType}-${i}-${j}`;
             const baseX = i * colDx + j * rowDx + rowOffsetX;
             const baseY = i * colDy + j * rowDy + rowOffsetY;
             const boardPoints = [
@@ -1126,10 +865,9 @@ function calculate() {
               { x: baseX + rowDx + colDx + topShiftX, y: baseY + rowDy + colDy + topShiftY },
               { x: baseX + colDx + topShiftX, y: baseY + colDy + topShiftY }
             ];
-            const rotatedBoardPoints = transformPatternPolygon(boardPoints);
-            const key = `${boardType}-${i}-${j}`;
-            const isInside = rotatedBoardPoints.some(point => isPointInPolygon(point, rotatedPoints));
-            const manuallyToggled = toggledPlanks.has(key);
+            const transformedPoints = core.transformPatternPolygon(boardPoints);
+            const isInside = polygonsIntersect(transformedPoints, core.rotatedPoints);
+            const manuallyToggled = core.toggledPlanks.has(key);
             const finalVisible = manuallyToggled ? !isInside : isInside;
 
             if (finalVisible) {
@@ -1137,538 +875,50 @@ function calculate() {
               if (boardType === "A") aPlanks++;
               else bPlanks++;
 
-              const allInside = rotatedBoardPoints.every(point => isPointInPolygon(point, rotatedPoints));
+              const allInside = isPolygonFullyInsidePolygon(transformedPoints, core.rotatedPoints);
               if (allInside) fullPlanks++;
               else cutPlanks++;
             }
 
-            const fillColor = manuallyToggled
-              ? "lightgray"
-              : isInside
-                ? boardColor
-                : "#ffffff";
-
-            const strokeColor = finalVisible ? "#555" : "gray";
-            const dash = finalVisible ? "" : "20,20";
-
-            pattern.push(
-              <polygon
-                key={`french-${key}`}
-                points={rotatedBoardPoints.map(point => `${point.x},${point.y}`).join(" ")}
-                fill={fillColor}
-                stroke={strokeColor}
-                strokeWidth={10}
-                strokeDasharray={dash}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  if (suppressBoardClick) {
-                    setSuppressBoardClick(false);
-                    return;
-                  }
-                  if (isMeasuring) {
-                    const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
-                    if (savedMeasurement) return;
-                  }
-                  setToggledPlanks(prev => {
-                    const newSet = new Set(prev);
-                    if (newSet.has(key)) newSet.delete(key);
-                    else newSet.add(key);
-                    return newSet;
-                  });
-                }}
-              />
-            );
+            pattern.push(createBoardPolygon(
+              `french-${key}`,
+              transformedPoints,
+              manuallyToggled ? "lightgray" : (isInside ? boardColor : "#ffffff"),
+              finalVisible ? "#555" : "gray",
+              finalVisible ? "" : "20,20",
+              (e) => core.handleBoardClick(e, key)
+            ));
           }
         }
       }
 
       const aBoxes = Math.ceil(aPlanks / 12);
       const bBoxes = Math.ceil(bPlanks / 12);
-      const rulerLength = draftRulerStart && draftRulerEnd
-        ? Math.hypot(draftRulerEnd.x - draftRulerStart.x, draftRulerEnd.y - draftRulerStart.y)
-        : 0;
-      const rulerMidX = draftRulerStart && draftRulerEnd ? (draftRulerStart.x + draftRulerEnd.x) / 2 : 0;
-      const rulerMidY = draftRulerStart && draftRulerEnd ? (draftRulerStart.y + draftRulerEnd.y) / 2 : 0;
+      const stats = [
+        `Площадь: ${core.areaM2} м²`,
+        `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
+        `Упаковок: A ${aBoxes}, B ${bBoxes}`,
+        `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
+        "Доска: 620 x 132 мм, спил 45°"
+      ];
 
-      return (
-        <div className="p-4">
-          <h1 className="text-xl font-bold mb-2">Французская вариант 2</h1>
-          <div className="flex flex-wrap gap-4 mb-2">
-            <div>Площадь: {areaM2} м²</div>
-            <div>Досок: {planksNeeded} (A: {aPlanks}, B: {bPlanks})</div>
-            <div>Упаковок: A {aBoxes}, B {bBoxes}</div>
-            <div>Целых: {fullPlanks}, рез: {cutPlanks}</div>
-            <div>Доска: 620 x 132 мм, спил 45°</div>
-          </div>
-          {hintText && (
-            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
-          )}
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <div className="flex items-center gap-2">
-              <span>Угол:</span>
-              <input
-                type="number"
-                min="-180"
-                max="180"
-                step="1"
-                value={layoutRotation}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
-              />
-              <span>°</span>
-              <span>X:</span>
-              <input
-                type="number"
-                step="10"
-                value={layoutOffsetX}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
-              />
-              <span>Y:</span>
-              <input
-                type="number"
-                step="10"
-                value={layoutOffsetY}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <button onClick={() => { setMeasurements([]); setDraftRulerStart(null); setDraftRulerEnd(null); setIsMeasuring(false); }} className="bg-red-100 px-2 py-1 rounded">Удалить измерения</button>
-            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
-            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
-            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
-          </div>
-          <svg
-            ref={svgRef}
-            onClick={handleClick}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            width={viewportWidth}
-            height={viewportHeight}
-            viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
-            preserveAspectRatio="xMidYMid meet"
-            className="border border-gray-400 bg-white cursor-crosshair"
-          >
-            <g>
-              {gridLines.vertical.map((x, i) => (
-                <line
-                  key={`fv${i}`}
-                  x1={x}
-                  y1={gridLines.startY}
-                  x2={x}
-                  y2={gridLines.endY}
-                  stroke="#eee"
-                  strokeWidth={5}
-                />
-              ))}
-              {gridLines.horizontal.map((y, i) => (
-                <line
-                  key={`fh${i}`}
-                  x1={gridLines.startX}
-                  y1={y}
-                  x2={gridLines.endX}
-                  y2={y}
-                  stroke="#eee"
-                  strokeWidth={10}
-                />
-              ))}
-              {pattern}
-              {measurements.map((measurement, index) => {
-                const length = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
-                const midX = (measurement.start.x + measurement.end.x) / 2;
-                const midY = (measurement.start.y + measurement.end.y) / 2;
-                return (
-                  <g key={`measurement-${index}`}>
-                    <line
-                      x1={measurement.start.x}
-                      y1={measurement.start.y}
-                      x2={measurement.end.x}
-                      y2={measurement.end.y}
-                      stroke="#d62828"
-                      strokeWidth={12}
-                    />
-                    <text
-                      x={midX}
-                      y={midY - 20}
-                      fontSize={90}
-                      fill="#d62828"
-                      textAnchor="middle"
-                      stroke="#ffffff"
-                      strokeWidth={10}
-                      paintOrder="stroke"
-                    >
-                      {`${length.toFixed(0)} мм`}
-                    </text>
-                  </g>
-                );
-              })}
-              {draftRulerStart && draftRulerEnd && (
-                <g>
-                  <line
-                    x1={draftRulerStart.x}
-                    y1={draftRulerStart.y}
-                    x2={draftRulerEnd.x}
-                    y2={draftRulerEnd.y}
-                    stroke="#d62828"
-                    strokeWidth={12}
-                  />
-                  <text
-                    x={rulerMidX}
-                    y={rulerMidY - 20}
-                    fontSize={90}
-                    fill="#d62828"
-                    textAnchor="middle"
-                    stroke="#ffffff"
-                    strokeWidth={10}
-                    paintOrder="stroke"
-                  >
-                    {`${rulerLength.toFixed(0)} мм`}
-                  </text>
-                </g>
-              )}
-              {rotatedPoints.map((p, i) => (
-                <g key={i}>
-                  <circle cx={p.x} cy={p.y} r={20} fill="red" />
-                  <text x={p.x + 30} y={p.y - 30} fontSize={120} fill="black">{i + 1}</text>
-                </g>
-              ))}
-              {rotatedPoints.map((p, i) => {
-                const next = rotatedPoints[(i + 1) % rotatedPoints.length];
-                if (i === points.length - 1 && !isClosed) return null;
-                return (
-                  <line
-                    key={i}
-                    x1={p.x}
-                    y1={p.y}
-                    x2={next.x}
-                    y2={next.y}
-                    stroke="black"
-                    strokeWidth={10}
-                    onClick={(e) => startMeasurement(e, p, next)}
-                  />
-                );
-              })}
-              {lastPoint && mousePos && !isClosed && (
-                <line
-                  x1={lastPoint.x}
-                  y1={lastPoint.y}
-                  x2={mousePos.x}
-                  y2={mousePos.y}
-                  stroke="orange"
-                  strokeWidth={10}
-                  strokeDasharray="10,10"
-                />
-              )}
-            </g>
-          </svg>
-        </div>
-      );
+      return <PlannerLayout title="Французская вариант 2" stats={stats} core={core} pattern={pattern} />;
     }
 
     function FrenchClassicPlanner({ roomState }) {
-      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, dragMeasureStart, setDragMeasureStart, dragMeasureMoved, setDragMeasureMoved, suppressBoardClick, setSuppressBoardClick, isMeasuring, setIsMeasuring, resetCurrentLayoutSettings } = roomState;
-      const [tileSize] = useState(620);
-      const [tileWidth] = useState(132);
-      const svgRef = useRef(null);
-      const [toggledPlanks, setToggledPlanks] = useState(new Set());
-      const viewportWidth = 800;
-      const viewportHeight = 600;
-      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
-
-      function getSvgCoordinates(e) {
-        const svg = svgRef.current;
-        const point = svg.createSVGPoint();
-        point.x = e.clientX;
-        point.y = e.clientY;
-        const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
-        return { x: transformed.x, y: transformed.y };
-      }
-
-      function projectPointToSegment(point, a, b) {
-        const abx = b.x - a.x;
-        const aby = b.y - a.y;
-        const apx = point.x - a.x;
-        const apy = point.y - a.y;
-        const abLenSq = abx * abx + aby * aby;
-        if (abLenSq === 0) return a;
-        const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
-        return {
-          x: a.x + abx * t,
-          y: a.y + aby * t
-        };
-      }
-
-      function startMeasurement(e, start, end) {
-        if (!isClosed) return;
-        e.stopPropagation();
-        const point = projectPointToSegment(getSvgCoordinates(e), start, end);
-        setDraftRulerStart(point);
-        setDraftRulerEnd(point);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(true);
-      }
-
-      function handleMouseDown(e) {
-        if (!isClosed || e.button !== 0 || isMeasuring) return;
-        const coords = getSvgCoordinates(e);
-        setDragMeasureStart(coords);
-        setDragMeasureMoved(false);
-        setDraftRulerStart(coords);
-        setDraftRulerEnd(coords);
-      }
-
-      function handleMouseUp(e) {
-        if (!dragMeasureStart) return;
-        const coords = getSvgCoordinates(e);
-        finalizeMeasurement(coords, true);
-      }
-
-      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
-        if (!draftRulerStart) return false;
-        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
-        const shouldSave = length >= 15;
-        if (shouldSave) {
-          setDraftRulerEnd(endPoint);
-          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
-          if (suppressNextBoardClick) {
-            setSuppressBoardClick(true);
-          }
-        }
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(false);
-        return shouldSave;
-      }
-
-      function handleClick(e) {
-        if (isClosed) {
-          if (isMeasuring && !dragMeasureStart) {
-            finalizeMeasurement(getSvgCoordinates(e));
-          }
-          return;
-        }
-        const { x, y } = getSvgCoordinates(e);
-        setPoints([...points, { x, y }]);
-      }
-
-      function handleMouseMove(e) {
-        const coords = getSvgCoordinates(e);
-        if (dragMeasureStart) {
-          setMousePos(coords);
-          setDraftRulerEnd(coords);
-          if (!dragMeasureMoved && Math.hypot(coords.x - dragMeasureStart.x, coords.y - dragMeasureStart.y) > 5) {
-            setDragMeasureMoved(true);
-            setIsMeasuring(true);
-          }
-          return;
-        }
-        if (isMeasuring) {
-          setMousePos(coords);
-          setDraftRulerEnd(coords);
-          return;
-        }
-        if (isClosed) return;
-        setMousePos(coords);
-      }
-
-      function closePolygon() {
-        if (points.length >= 3) setIsClosed(true);
-      }
-
-      function undoLastPoint() {
-        if (isClosed || points.length === 0) return;
-        setPoints(points.slice(0, -1));
-      }
-
-      function reset() {
-        setPoints([]);
-        setIsClosed(false);
-        setMousePos(null);
-        setToggledPlanks(new Set());
-        resetCurrentLayoutSettings();
-        setMeasurements([]);
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setSuppressBoardClick(false);
-        setIsMeasuring(false);
-        setViewBox(defaultViewBox);
-      }
-
-      function polygonArea(pts) {
-        let area = 0;
-        for (let i = 0; i < pts.length; i++) {
-          const j = (i + 1) % pts.length;
-          area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-        }
-        return Math.abs(area / 2);
-      }
-
-      function rotatePolygon(pts, degrees) {
-        if (!pts.length || degrees === 0) return pts;
-
-        const xs = pts.map(p => p.x);
-        const ys = pts.map(p => p.y);
-        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        const rad = (degrees * Math.PI) / 180;
-
-        return pts.map(p => {
-          const dx = p.x - cx;
-          const dy = p.y - cy;
-          return {
-            x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
-            y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
-          };
-        });
-      }
-
-      const rotatedPoints = points;
-      const rotationCenter = useMemo(() => {
-        if (!points.length) return { x: 0, y: 0 };
-        const xs = points.map(point => point.x);
-        const ys = points.map(point => point.y);
-        return {
-          x: (Math.min(...xs) + Math.max(...xs)) / 2,
-          y: (Math.min(...ys) + Math.max(...ys)) / 2
-        };
-      }, [points]);
-
-      function rotatePatternPolygon(pts) {
-        if (!pts.length || layoutRotation === 0 || !points.length) return pts;
-        const rad = (layoutRotation * Math.PI) / 180;
-        return pts.map(point => {
-          const dx = point.x - rotationCenter.x;
-          const dy = point.y - rotationCenter.y;
-          return {
-            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
-            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
-          };
-        });
-      }
-      function transformPatternPolygon(pts) {
-        return rotatePatternPolygon(pts).map(point => ({
-          x: point.x + layoutOffsetX,
-          y: point.y + layoutOffsetY
-        }));
-      }
-
-      useEffect(() => {
-        if (isClosed) {
-          setToggledPlanks(new Set());
-        }
-      }, [layoutRotation, isClosed]);
-
-      const area = isClosed ? polygonArea(rotatedPoints) : 0;
-      const areaM2 = (area / 1_000_000).toFixed(2);
-      let planksNeeded = 0, fullPlanks = 0, cutPlanks = 0, aPlanks = 0, bPlanks = 0;
-      const lastPoint = points[points.length - 1];
-      let hintText = "";
-      if (lastPoint && mousePos && !isClosed) {
-        const dx = mousePos.x - lastPoint.x;
-        const dy = mousePos.y - lastPoint.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-        hintText = `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
-      }
-
+      const core = usePlannerCore(roomState);
+      const tileSize = 620;
+      const tileWidth = 132;
+      let planksNeeded = 0;
+      let fullPlanks = 0;
+      let cutPlanks = 0;
+      let aPlanks = 0;
+      let bPlanks = 0;
       const pattern = [];
-      const isPointInPolygon = (point, polygon) => {
-        let inside = false;
-        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-          const xi = polygon[i].x, yi = polygon[i].y;
-          const xj = polygon[j].x, yj = polygon[j].y;
-          const intersect = ((yi > point.y) !== (yj > point.y)) &&
-            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
-          if (intersect) inside = !inside;
-        }
-        return inside;
-      };
-      const getPolygonBounds = (polygon) => {
-        const xs = polygon.map(point => point.x);
-        const ys = polygon.map(point => point.y);
-        return {
-          minX: Math.min(...xs),
-          maxX: Math.max(...xs),
-          minY: Math.min(...ys),
-          maxY: Math.max(...ys)
-        };
-      };
 
-      function buildFittedViewBox(sourcePoints) {
-        if (!sourcePoints.length) {
-          return defaultViewBox;
-        }
-
-        const xs = sourcePoints.map(p => p.x);
-        const ys = sourcePoints.map(p => p.y);
-        const rawMinX = Math.min(...xs);
-        const rawMaxX = Math.max(...xs);
-        const rawMinY = Math.min(...ys);
-        const rawMaxY = Math.max(...ys);
-        const padding = 500;
-
-        let minX = rawMinX - padding;
-        let maxX = rawMaxX + padding;
-        let minY = rawMinY - padding;
-        let maxY = rawMaxY + padding;
-
-        let width = Math.max(maxX - minX, 1000);
-        let height = Math.max(maxY - minY, 1000);
-        const viewportAspect = viewportWidth / viewportHeight;
-        const contentAspect = width / height;
-
-        if (contentAspect > viewportAspect) {
-          const adjustedHeight = width / viewportAspect;
-          const extraHeight = adjustedHeight - height;
-          minY -= extraHeight / 2;
-          height = adjustedHeight;
-        } else {
-          const adjustedWidth = height * viewportAspect;
-          const extraWidth = adjustedWidth - width;
-          minX -= extraWidth / 2;
-          width = adjustedWidth;
-        }
-
-        return { minX, minY, width, height };
-      }
-
-      useEffect(() => {
-        if (!isClosed) return;
-        setViewBox(buildFittedViewBox(rotatedPoints));
-      }, [layoutRotation]);
-
-      const gridLines = useMemo(() => {
-        const step = 100;
-        const startX = Math.floor(viewBox.minX / step) * step;
-        const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
-        const startY = Math.floor(viewBox.minY / step) * step;
-        const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
-        const vertical = [];
-        const horizontal = [];
-
-        for (let x = startX; x <= endX; x += step) vertical.push(x);
-        for (let y = startY; y <= endY; y += step) horizontal.push(y);
-
-        return { vertical, horizontal, startX, endX, startY, endY };
-      }, [viewBox]);
-
-      function rotateAndTranslate(localPoints, offsetX, offsetY, angleDeg) {
-        const rad = (angleDeg * Math.PI) / 180;
-        return localPoints.map(point => ({
-          x: offsetX + point.x * Math.cos(rad) - point.y * Math.sin(rad),
-          y: offsetY + point.x * Math.sin(rad) + point.y * Math.cos(rad)
-        }));
-      }
-
-      if (isClosed) {
-        const rotatedRoomX = rotatedPoints.map(point => point.x);
-        const rotatedRoomY = rotatedPoints.map(point => point.y);
+      if (core.isClosed) {
+        const rotatedRoomX = core.rotatedPoints.map(point => point.x);
+        const rotatedRoomY = core.rotatedPoints.map(point => point.y);
         const minRoomX = Math.min(...rotatedRoomX);
         const maxRoomX = Math.max(...rotatedRoomX);
         const minRoomY = Math.min(...rotatedRoomY);
@@ -1710,12 +960,9 @@ function calculate() {
             ];
 
             for (const board of boards) {
-              const currentBoard = {
-                ...board,
-                points: transformPatternPolygon(board.points)
-              };
-              const isInside = currentBoard.points.some(point => isPointInPolygon(point, rotatedPoints));
-              const manuallyToggled = toggledPlanks.has(board.key);
+              const transformedPoints = core.transformPatternPolygon(board.points);
+              const isInside = polygonsIntersect(transformedPoints, core.rotatedPoints);
+              const manuallyToggled = core.toggledPlanks.has(board.key);
               const finalVisible = manuallyToggled ? !isInside : isInside;
 
               if (finalVisible) {
@@ -1723,47 +970,19 @@ function calculate() {
                 if (board.type === "A") aPlanks++;
                 else bPlanks++;
 
-                const allInside = currentBoard.points.every(point => isPointInPolygon(point, rotatedPoints));
+                const allInside = isPolygonFullyInsidePolygon(transformedPoints, core.rotatedPoints);
                 if (allInside) fullPlanks++;
                 else cutPlanks++;
               }
 
-              const fillColor = manuallyToggled
-                ? "lightgray"
-                : isInside
-                  ? board.color
-                  : "#ffffff";
-
-              const strokeColor = finalVisible ? "#555" : "gray";
-              const dash = finalVisible ? "" : "20,20";
-
-              pattern.push(
-                <polygon
-                  key={`classic-${board.key}`}
-                  points={currentBoard.points.map(point => `${point.x},${point.y}`).join(" ")}
-                  fill={fillColor}
-                  stroke={strokeColor}
-                  strokeWidth={10}
-                  strokeDasharray={dash}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  if (suppressBoardClick) {
-                    setSuppressBoardClick(false);
-                    return;
-                  }
-                  if (isMeasuring) {
-                    const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
-                    if (savedMeasurement) return;
-                  }
-                    setToggledPlanks(prev => {
-                      const newSet = new Set(prev);
-                      if (newSet.has(board.key)) newSet.delete(board.key);
-                      else newSet.add(board.key);
-                      return newSet;
-                    });
-                  }}
-                />
-              );
+              pattern.push(createBoardPolygon(
+                `classic-${board.key}`,
+                transformedPoints,
+                manuallyToggled ? "lightgray" : (isInside ? board.color : "#ffffff"),
+                finalVisible ? "#555" : "gray",
+                finalVisible ? "" : "20,20",
+                (e) => core.handleBoardClick(e, board.key)
+              ));
             }
           }
         }
@@ -1771,467 +990,31 @@ function calculate() {
 
       const aBoxes = Math.ceil(aPlanks / 12);
       const bBoxes = Math.ceil(bPlanks / 12);
-      const rulerLength = draftRulerStart && draftRulerEnd
-        ? Math.hypot(draftRulerEnd.x - draftRulerStart.x, draftRulerEnd.y - draftRulerStart.y)
-        : 0;
-      const rulerMidX = draftRulerStart && draftRulerEnd ? (draftRulerStart.x + draftRulerEnd.x) / 2 : 0;
-      const rulerMidY = draftRulerStart && draftRulerEnd ? (draftRulerStart.y + draftRulerEnd.y) / 2 : 0;
+      const stats = [
+        `Площадь: ${core.areaM2} м²`,
+        `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
+        `Упаковок: A ${aBoxes}, B ${bBoxes}`,
+        `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
+        "Доска: 620 x 132 мм, спил 45°"
+      ];
 
-      return (
-        <div className="p-4">
-          <h1 className="text-xl font-bold mb-2">Французская Классическая</h1>
-          <div className="flex flex-wrap gap-4 mb-2">
-            <div>Площадь: {areaM2} м²</div>
-            <div>Досок: {planksNeeded} (A: {aPlanks}, B: {bPlanks})</div>
-            <div>Упаковок: A {aBoxes}, B {bBoxes}</div>
-            <div>Целых: {fullPlanks}, рез: {cutPlanks}</div>
-            <div>Доска: 620 x 132 мм, спил 45°</div>
-          </div>
-          {hintText && (
-            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
-          )}
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <div className="flex items-center gap-2">
-              <span>Угол:</span>
-              <input
-                type="number"
-                min="-180"
-                max="180"
-                step="1"
-                value={layoutRotation}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
-              />
-              <span>°</span>
-              <span>X:</span>
-              <input
-                type="number"
-                step="10"
-                value={layoutOffsetX}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
-              />
-              <span>Y:</span>
-              <input
-                type="number"
-                step="10"
-                value={layoutOffsetY}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <button onClick={() => { setMeasurements([]); setDraftRulerStart(null); setDraftRulerEnd(null); setIsMeasuring(false); }} className="bg-red-100 px-2 py-1 rounded">Удалить измерения</button>
-            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
-            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
-            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
-          </div>
-          <svg
-            ref={svgRef}
-            onClick={handleClick}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            width={viewportWidth}
-            height={viewportHeight}
-            viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
-            preserveAspectRatio="xMidYMid meet"
-            className="border border-gray-400 bg-white cursor-crosshair"
-          >
-            <g>
-              {gridLines.vertical.map((x, i) => (
-                <line
-                  key={`cv${i}`}
-                  x1={x}
-                  y1={gridLines.startY}
-                  x2={x}
-                  y2={gridLines.endY}
-                  stroke="#eee"
-                  strokeWidth={5}
-                />
-              ))}
-              {gridLines.horizontal.map((y, i) => (
-                <line
-                  key={`ch${i}`}
-                  x1={gridLines.startX}
-                  y1={y}
-                  x2={gridLines.endX}
-                  y2={y}
-                  stroke="#eee"
-                  strokeWidth={10}
-                />
-              ))}
-              {pattern}
-              {measurements.map((measurement, index) => {
-                const length = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
-                const midX = (measurement.start.x + measurement.end.x) / 2;
-                const midY = (measurement.start.y + measurement.end.y) / 2;
-                return (
-                  <g key={`measurement-${index}`}>
-                    <line x1={measurement.start.x} y1={measurement.start.y} x2={measurement.end.x} y2={measurement.end.y} stroke="#d62828" strokeWidth={12} />
-                    <text x={midX} y={midY - 20} fontSize={90} fill="#d62828" textAnchor="middle" stroke="#ffffff" strokeWidth={10} paintOrder="stroke">
-                      {`${length.toFixed(0)} мм`}
-                    </text>
-                  </g>
-                );
-              })}
-              {draftRulerStart && draftRulerEnd && (
-                <g>
-                  <line
-                    x1={draftRulerStart.x}
-                    y1={draftRulerStart.y}
-                    x2={draftRulerEnd.x}
-                    y2={draftRulerEnd.y}
-                    stroke="#d62828"
-                    strokeWidth={12}
-                  />
-                  <text
-                    x={rulerMidX}
-                    y={rulerMidY - 20}
-                    fontSize={90}
-                    fill="#d62828"
-                    textAnchor="middle"
-                    stroke="#ffffff"
-                    strokeWidth={10}
-                    paintOrder="stroke"
-                  >
-                    {`${rulerLength.toFixed(0)} мм`}
-                  </text>
-                </g>
-              )}
-              {rotatedPoints.map((p, i) => (
-                <g key={i}>
-                  <circle cx={p.x} cy={p.y} r={20} fill="red" />
-                  <text x={p.x + 30} y={p.y - 30} fontSize={120} fill="black">{i + 1}</text>
-                </g>
-              ))}
-              {rotatedPoints.map((p, i) => {
-                const next = rotatedPoints[(i + 1) % rotatedPoints.length];
-                if (i === points.length - 1 && !isClosed) return null;
-                return (
-                  <line
-                    key={i}
-                    x1={p.x}
-                    y1={p.y}
-                    x2={next.x}
-                    y2={next.y}
-                    stroke="black"
-                    strokeWidth={10}
-                    onClick={(e) => startMeasurement(e, p, next)}
-                  />
-                );
-              })}
-              {lastPoint && mousePos && !isClosed && (
-                <line
-                  x1={lastPoint.x}
-                  y1={lastPoint.y}
-                  x2={mousePos.x}
-                  y2={mousePos.y}
-                  stroke="orange"
-                  strokeWidth={10}
-                  strokeDasharray="10,10"
-                />
-              )}
-            </g>
-          </svg>
-        </div>
-      );
+      return <PlannerLayout title="Французская Классическая" stats={stats} core={core} pattern={pattern} />;
     }
 
     function FrenchBraidPlanner({ roomState, title = "Царская елка", singlePair = false, singleRow = false, pairBOffsetY = 0, moduleShiftXOverride = null, moduleShiftYOverride = null, rowShiftXOverride = null, rowShiftYOverride = null, previewRowCount = null, previewRepeatCount = null }) {
-      const { points, setPoints, isClosed, setIsClosed, mousePos, setMousePos, layoutRotation, setLayoutRotation, layoutOffsetX, setLayoutOffsetX, layoutOffsetY, setLayoutOffsetY, viewBox, setViewBox, measurements, setMeasurements, draftRulerStart, setDraftRulerStart, draftRulerEnd, setDraftRulerEnd, dragMeasureStart, setDragMeasureStart, dragMeasureMoved, setDragMeasureMoved, suppressBoardClick, setSuppressBoardClick, isMeasuring, setIsMeasuring, resetCurrentLayoutSettings } = roomState;
-      const [tileSize] = useState(620);
-      const [tileWidth] = useState(132);
-      const svgRef = useRef(null);
-      const [toggledPlanks, setToggledPlanks] = useState(new Set());
-      const viewportWidth = 800;
-      const viewportHeight = 600;
-      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
-
-      function getSvgCoordinates(e) {
-        const svg = svgRef.current;
-        const point = svg.createSVGPoint();
-        point.x = e.clientX;
-        point.y = e.clientY;
-        const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
-        return { x: transformed.x, y: transformed.y };
-      }
-
-      function projectPointToSegment(point, a, b) {
-        const abx = b.x - a.x;
-        const aby = b.y - a.y;
-        const apx = point.x - a.x;
-        const apy = point.y - a.y;
-        const abLenSq = abx * abx + aby * aby;
-        if (abLenSq === 0) return a;
-        const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
-        return {
-          x: a.x + abx * t,
-          y: a.y + aby * t
-        };
-      }
-
-      function startMeasurement(e, start, end) {
-        if (!isClosed) return;
-        e.stopPropagation();
-        const point = projectPointToSegment(getSvgCoordinates(e), start, end);
-        setDraftRulerStart(point);
-        setDraftRulerEnd(point);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(true);
-      }
-
-      function handleMouseDown(e) {
-        if (!isClosed || e.button !== 0 || isMeasuring) return;
-        const coords = getSvgCoordinates(e);
-        setDragMeasureStart(coords);
-        setDragMeasureMoved(false);
-        setDraftRulerStart(coords);
-        setDraftRulerEnd(coords);
-      }
-
-      function handleMouseUp(e) {
-        if (!dragMeasureStart) return;
-        const coords = getSvgCoordinates(e);
-        finalizeMeasurement(coords, true);
-      }
-
-      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
-        if (!draftRulerStart) return false;
-        const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
-        const shouldSave = length >= 15;
-        if (shouldSave) {
-          setDraftRulerEnd(endPoint);
-          setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
-          if (suppressNextBoardClick) {
-            setSuppressBoardClick(true);
-          }
-        }
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(false);
-        return shouldSave;
-      }
-
-      function handleClick(e) {
-        if (isClosed) {
-          if (isMeasuring && !dragMeasureStart) {
-            finalizeMeasurement(getSvgCoordinates(e));
-          }
-          return;
-        }
-        const { x, y } = getSvgCoordinates(e);
-        setPoints([...points, { x, y }]);
-      }
-
-      function handleMouseMove(e) {
-        const coords = getSvgCoordinates(e);
-        if (dragMeasureStart) {
-          setMousePos(coords);
-          setDraftRulerEnd(coords);
-          if (!dragMeasureMoved && Math.hypot(coords.x - dragMeasureStart.x, coords.y - dragMeasureStart.y) > 5) {
-            setDragMeasureMoved(true);
-            setIsMeasuring(true);
-          }
-          return;
-        }
-        if (isMeasuring) {
-          setMousePos(coords);
-          setDraftRulerEnd(coords);
-          return;
-        }
-        if (isClosed) return;
-        setMousePos(coords);
-      }
-
-      function closePolygon() {
-        if (points.length >= 3) setIsClosed(true);
-      }
-
-      function undoLastPoint() {
-        if (isClosed || points.length === 0) return;
-        setPoints(points.slice(0, -1));
-      }
-
-      function reset() {
-        setPoints([]);
-        setIsClosed(false);
-        setMousePos(null);
-        setToggledPlanks(new Set());
-        resetCurrentLayoutSettings();
-        setMeasurements([]);
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setSuppressBoardClick(false);
-        setIsMeasuring(false);
-        setViewBox(defaultViewBox);
-      }
-
-      function polygonArea(pts) {
-        let area = 0;
-        for (let i = 0; i < pts.length; i++) {
-          const j = (i + 1) % pts.length;
-          area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-        }
-        return Math.abs(area / 2);
-      }
-
-      function rotatePolygon(pts, degrees) {
-        if (!pts.length || degrees === 0) return pts;
-
-        const xs = pts.map(p => p.x);
-        const ys = pts.map(p => p.y);
-        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-        const rad = (degrees * Math.PI) / 180;
-
-        return pts.map(p => {
-          const dx = p.x - cx;
-          const dy = p.y - cy;
-          return {
-            x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
-            y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
-          };
-        });
-      }
-
-      const rotatedPoints = points;
-      const rotationCenter = useMemo(() => {
-        if (!points.length) return { x: 0, y: 0 };
-        const xs = points.map(point => point.x);
-        const ys = points.map(point => point.y);
-        return {
-          x: (Math.min(...xs) + Math.max(...xs)) / 2,
-          y: (Math.min(...ys) + Math.max(...ys)) / 2
-        };
-      }, [points]);
-
-      function rotatePatternPolygon(pts) {
-        if (!pts.length || layoutRotation === 0 || !points.length) return pts;
-        const rad = (layoutRotation * Math.PI) / 180;
-        return pts.map(point => {
-          const dx = point.x - rotationCenter.x;
-          const dy = point.y - rotationCenter.y;
-          return {
-            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
-            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
-          };
-        });
-      }
-      function transformPatternPolygon(pts) {
-        return rotatePatternPolygon(pts).map(point => ({
-          x: point.x + layoutOffsetX,
-          y: point.y + layoutOffsetY
-        }));
-      }
-
-      useEffect(() => {
-        if (isClosed) {
-          setToggledPlanks(new Set());
-        }
-      }, [layoutRotation, isClosed]);
-
-      const area = isClosed ? polygonArea(rotatedPoints) : 0;
-      const areaM2 = (area / 1_000_000).toFixed(2);
-      let planksNeeded = 0, fullPlanks = 0, cutPlanks = 0, aPlanks = 0, bPlanks = 0;
-      const lastPoint = points[points.length - 1];
-      let hintText = "";
-      if (lastPoint && mousePos && !isClosed) {
-        const dx = mousePos.x - lastPoint.x;
-        const dy = mousePos.y - lastPoint.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-        hintText = `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
-      }
-
+      const core = usePlannerCore(roomState);
+      const tileSize = 620;
+      const tileWidth = 132;
+      let planksNeeded = 0;
+      let fullPlanks = 0;
+      let cutPlanks = 0;
+      let aPlanks = 0;
+      let bPlanks = 0;
       const pattern = [];
-      const isPointInPolygon = (point, polygon) => {
-        let inside = false;
-        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-          const xi = polygon[i].x, yi = polygon[i].y;
-          const xj = polygon[j].x, yj = polygon[j].y;
-          const intersect = ((yi > point.y) !== (yj > point.y)) &&
-            (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
-          if (intersect) inside = !inside;
-        }
-        return inside;
-      };
-      const getPolygonBounds = (polygon) => {
-        const xs = polygon.map(point => point.x);
-        const ys = polygon.map(point => point.y);
-        return {
-          minX: Math.min(...xs),
-          maxX: Math.max(...xs),
-          minY: Math.min(...ys),
-          maxY: Math.max(...ys)
-        };
-      };
 
-      function buildFittedViewBox(sourcePoints) {
-        if (!sourcePoints.length) {
-          return defaultViewBox;
-        }
-
-        const xs = sourcePoints.map(p => p.x);
-        const ys = sourcePoints.map(p => p.y);
-        const rawMinX = Math.min(...xs);
-        const rawMaxX = Math.max(...xs);
-        const rawMinY = Math.min(...ys);
-        const rawMaxY = Math.max(...ys);
-        const padding = 500;
-
-        let minX = rawMinX - padding;
-        let maxX = rawMaxX + padding;
-        let minY = rawMinY - padding;
-        let maxY = rawMaxY + padding;
-
-        let width = Math.max(maxX - minX, 1000);
-        let height = Math.max(maxY - minY, 1000);
-        const viewportAspect = viewportWidth / viewportHeight;
-        const contentAspect = width / height;
-
-        if (contentAspect > viewportAspect) {
-          const adjustedHeight = width / viewportAspect;
-          const extraHeight = adjustedHeight - height;
-          minY -= extraHeight / 2;
-          height = adjustedHeight;
-        } else {
-          const adjustedWidth = height * viewportAspect;
-          const extraWidth = adjustedWidth - width;
-          minX -= extraWidth / 2;
-          width = adjustedWidth;
-        }
-
-        return { minX, minY, width, height };
-      }
-
-      useEffect(() => {
-        if (!isClosed) return;
-        setViewBox(buildFittedViewBox(rotatedPoints));
-      }, [layoutRotation]);
-
-      const gridLines = useMemo(() => {
-        const step = 100;
-        const startX = Math.floor(viewBox.minX / step) * step;
-        const endX = Math.ceil((viewBox.minX + viewBox.width) / step) * step;
-        const startY = Math.floor(viewBox.minY / step) * step;
-        const endY = Math.ceil((viewBox.minY + viewBox.height) / step) * step;
-        const vertical = [];
-        const horizontal = [];
-
-        for (let x = startX; x <= endX; x += step) vertical.push(x);
-        for (let y = startY; y <= endY; y += step) horizontal.push(y);
-
-        return { vertical, horizontal, startX, endX, startY, endY };
-      }, [viewBox]);
-
-      if (isClosed) {
-        const rotatedRoomX = rotatedPoints.map(point => point.x);
-        const rotatedRoomY = rotatedPoints.map(point => point.y);
+      if (core.isClosed) {
+        const rotatedRoomX = core.rotatedPoints.map(point => point.x);
+        const rotatedRoomY = core.rotatedPoints.map(point => point.y);
         const minRoomX = Math.min(...rotatedRoomX);
         const maxRoomX = Math.max(...rotatedRoomX);
         const minRoomY = Math.min(...rotatedRoomY);
@@ -2239,7 +1022,6 @@ function calculate() {
         const shortSide = tileWidth;
         const shortEdgeLength = tileWidth * Math.SQRT2;
         const sideRun = tileSize / Math.SQRT2;
-        const shortRun = tileWidth / Math.SQRT2;
         const moduleShiftX = moduleShiftXOverride ?? -tileWidth;
         const moduleShiftY = moduleShiftYOverride ?? -(shortEdgeLength - tileWidth);
         const rowShiftX = rowShiftXOverride ?? tileSize / Math.SQRT2;
@@ -2257,7 +1039,6 @@ function calculate() {
         const renderMaxX = maxRoomX + extraRenderPadding;
         const renderMinY = minRoomY - extraRenderPadding;
         const renderMaxY = maxRoomY + extraRenderPadding;
-
         const rowStart = previewRowCount !== null ? 0 : ((singlePair || singleRow) ? 0 : -rowReach);
         const rowEnd = previewRowCount !== null ? Math.max(0, previewRowCount - 1) : ((singlePair || singleRow) ? 0 : rowReach);
         const repeatStart = previewRepeatCount !== null ? 0 : (singlePair ? 0 : -repeatReach);
@@ -2267,7 +1048,7 @@ function calculate() {
           for (let repeat = repeatStart; repeat <= repeatEnd; repeat++) {
             const seamX = centerX + row * rowShiftX + repeat * moduleShiftX;
             const y0 = centerY + row * rowShiftY + repeat * moduleShiftY;
-            const board = {
+            const boardA = {
               type: "A",
               color: "#d5b07b",
               key: `BA-${row}-${repeat}`,
@@ -2292,70 +1073,39 @@ function calculate() {
               ]
             };
 
-            for (const rawBoard of [board, boardB]) {
-              const currentBoard = {
-                ...rawBoard,
-                points: transformPatternPolygon(rawBoard.points)
-              };
-              const isInside = currentBoard.points.some(point => isPointInPolygon(point, rotatedPoints));
-              const manuallyToggled = toggledPlanks.has(currentBoard.key);
+            for (const board of [boardA, boardB]) {
+              const transformedPoints = core.transformPatternPolygon(board.points);
+              const isInside = polygonsIntersect(transformedPoints, core.rotatedPoints);
+              const manuallyToggled = core.toggledPlanks.has(board.key);
               const finalVisible = manuallyToggled ? !isInside : isInside;
-              const bounds = getPolygonBounds(currentBoard.points);
+              const bounds = getPolygonBounds(transformedPoints);
               const nearRoom = !(
-                bounds.maxX < renderMinX ||
-                bounds.minX > renderMaxX ||
-                bounds.maxY < renderMinY ||
-                bounds.minY > renderMaxY
+                bounds.maxX < renderMinX
+                || bounds.minX > renderMaxX
+                || bounds.maxY < renderMinY
+                || bounds.minY > renderMaxY
               );
 
               if (!finalVisible && !manuallyToggled && !nearRoom) continue;
 
               if (finalVisible) {
                 planksNeeded++;
-                if (currentBoard.type === "A") aPlanks++;
+                if (board.type === "A") aPlanks++;
                 else bPlanks++;
 
-                const allInside = currentBoard.points.every(point => isPointInPolygon(point, rotatedPoints));
+                const allInside = isPolygonFullyInsidePolygon(transformedPoints, core.rotatedPoints);
                 if (allInside) fullPlanks++;
                 else cutPlanks++;
               }
 
-              const fillColor = manuallyToggled
-                ? "lightgray"
-                : isInside
-                  ? currentBoard.color
-                  : "#ffffff";
-
-              const strokeColor = finalVisible ? "#555" : "gray";
-              const dash = finalVisible ? "" : "20,20";
-
-              pattern.push(
-                <polygon
-                  key={`braid-${currentBoard.key}`}
-                  points={currentBoard.points.map(point => `${point.x},${point.y}`).join(" ")}
-                  fill={fillColor}
-                  stroke={strokeColor}
-                  strokeWidth={10}
-                  strokeDasharray={dash}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  if (suppressBoardClick) {
-                    setSuppressBoardClick(false);
-                    return;
-                  }
-                  if (isMeasuring) {
-                    const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
-                    if (savedMeasurement) return;
-                  }
-                    setToggledPlanks(prev => {
-                      const newSet = new Set(prev);
-                      if (newSet.has(currentBoard.key)) newSet.delete(currentBoard.key);
-                      else newSet.add(currentBoard.key);
-                      return newSet;
-                    });
-                  }}
-                />
-              );
+              pattern.push(createBoardPolygon(
+                `braid-${board.key}`,
+                transformedPoints,
+                manuallyToggled ? "lightgray" : (isInside ? board.color : "#ffffff"),
+                finalVisible ? "#555" : "gray",
+                finalVisible ? "" : "20,20",
+                (e) => core.handleBoardClick(e, board.key)
+              ));
             }
           }
         }
@@ -2363,175 +1113,19 @@ function calculate() {
 
       const aBoxes = Math.ceil(aPlanks / 12);
       const bBoxes = Math.ceil(bPlanks / 12);
-      const rulerLength = draftRulerStart && draftRulerEnd
-        ? Math.hypot(draftRulerEnd.x - draftRulerStart.x, draftRulerEnd.y - draftRulerStart.y)
-        : 0;
-      const rulerMidX = draftRulerStart && draftRulerEnd ? (draftRulerStart.x + draftRulerEnd.x) / 2 : 0;
-      const rulerMidY = draftRulerStart && draftRulerEnd ? (draftRulerStart.y + draftRulerEnd.y) / 2 : 0;
+      const stats = [
+        `Площадь: ${core.areaM2} м²`,
+        `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
+        `Упаковок: A ${aBoxes}, B ${bBoxes}`,
+        `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
+        "Доска: 620 x 132 мм, спил 45°"
+      ];
 
-      return (
-        <div className="p-4">
-          <h1 className="text-xl font-bold mb-2">{title}</h1>
-          <div className="flex flex-wrap gap-4 mb-2">
-            <div>Площадь: {areaM2} м²</div>
-            <div>Досок: {planksNeeded} (A: {aPlanks}, B: {bPlanks})</div>
-            <div>Упаковок: A {aBoxes}, B {bBoxes}</div>
-            <div>Целых: {fullPlanks}, рез: {cutPlanks}</div>
-            <div>Доска: 620 x 132 мм, спил 45°</div>
-          </div>
-          {hintText && (
-            <div className="mb-2 text-sm text-gray-700">{hintText}</div>
-          )}
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <div className="flex items-center gap-2">
-              <span>Угол:</span>
-              <input
-                type="number"
-                min="-180"
-                max="180"
-                step="1"
-                value={layoutRotation}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutRotation(parseFloat(e.target.value) || 0)}
-              />
-              <span>°</span>
-              <span>X:</span>
-              <input
-                type="number"
-                step="10"
-                value={layoutOffsetX}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutOffsetX(parseFloat(e.target.value) || 0)}
-              />
-              <span>Y:</span>
-              <input
-                type="number"
-                step="10"
-                value={layoutOffsetY}
-                disabled={!isClosed}
-                onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <button onClick={() => { setMeasurements([]); setDraftRulerStart(null); setDraftRulerEnd(null); setIsMeasuring(false); }} className="bg-red-100 px-2 py-1 rounded">Удалить измерения</button>
-            <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
-            <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
-            <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
-          </div>
-          <svg
-            ref={svgRef}
-            onClick={handleClick}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            width={viewportWidth}
-            height={viewportHeight}
-            viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
-            preserveAspectRatio="xMidYMid meet"
-            className="border border-gray-400 bg-white cursor-crosshair"
-          >
-            <g>
-              {gridLines.vertical.map((x, i) => (
-                <line
-                  key={`bv${i}`}
-                  x1={x}
-                  y1={gridLines.startY}
-                  x2={x}
-                  y2={gridLines.endY}
-                  stroke="#eee"
-                  strokeWidth={5}
-                />
-              ))}
-              {gridLines.horizontal.map((y, i) => (
-                <line
-                  key={`bh${i}`}
-                  x1={gridLines.startX}
-                  y1={y}
-                  x2={gridLines.endX}
-                  y2={y}
-                  stroke="#eee"
-                  strokeWidth={10}
-                />
-              ))}
-              {pattern}
-              {measurements.map((measurement, index) => {
-                const length = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
-                const midX = (measurement.start.x + measurement.end.x) / 2;
-                const midY = (measurement.start.y + measurement.end.y) / 2;
-                return (
-                  <g key={`measurement-${index}`}>
-                    <line x1={measurement.start.x} y1={measurement.start.y} x2={measurement.end.x} y2={measurement.end.y} stroke="#d62828" strokeWidth={12} />
-                    <text x={midX} y={midY - 20} fontSize={90} fill="#d62828" textAnchor="middle" stroke="#ffffff" strokeWidth={10} paintOrder="stroke">
-                      {`${length.toFixed(0)} мм`}
-                    </text>
-                  </g>
-                );
-              })}
-              {draftRulerStart && draftRulerEnd && (
-                <g>
-                  <line
-                    x1={draftRulerStart.x}
-                    y1={draftRulerStart.y}
-                    x2={draftRulerEnd.x}
-                    y2={draftRulerEnd.y}
-                    stroke="#d62828"
-                    strokeWidth={12}
-                  />
-                  <text
-                    x={rulerMidX}
-                    y={rulerMidY - 20}
-                    fontSize={90}
-                    fill="#d62828"
-                    textAnchor="middle"
-                    stroke="#ffffff"
-                    strokeWidth={10}
-                    paintOrder="stroke"
-                  >
-                    {`${rulerLength.toFixed(0)} мм`}
-                  </text>
-                </g>
-              )}
-              {rotatedPoints.map((p, i) => (
-                <g key={i}>
-                  <circle cx={p.x} cy={p.y} r={20} fill="red" />
-                  <text x={p.x + 30} y={p.y - 30} fontSize={120} fill="black">{i + 1}</text>
-                </g>
-              ))}
-              {rotatedPoints.map((p, i) => {
-                const next = rotatedPoints[(i + 1) % rotatedPoints.length];
-                if (i === points.length - 1 && !isClosed) return null;
-                return (
-                  <line
-                    key={i}
-                    x1={p.x}
-                    y1={p.y}
-                    x2={next.x}
-                    y2={next.y}
-                    stroke="black"
-                    strokeWidth={10}
-                    onClick={(e) => startMeasurement(e, p, next)}
-                  />
-                );
-              })}
-              {lastPoint && mousePos && !isClosed && (
-                <line
-                  x1={lastPoint.x}
-                  y1={lastPoint.y}
-                  x2={mousePos.x}
-                  y2={mousePos.y}
-                  stroke="orange"
-                  strokeWidth={10}
-                  strokeDasharray="10,10"
-                />
-              )}
-            </g>
-          </svg>
-        </div>
-      );
+      return <PlannerLayout title={title} stats={stats} core={core} pattern={pattern} />;
     }
 
     function FrenchLayoutsHub() {
       const [selectedLayout, setSelectedLayout] = useState("english");
-      const defaultViewBox = { minX: 0, minY: 0, width: 8000, height: 6000 };
       const layoutDefaults = {
         english: { rotation: 90, offsetX: 0, offsetY: 0 },
         variant2: { rotation: -45, offsetX: 0, offsetY: 0 },
@@ -2550,7 +1144,7 @@ function calculate() {
       const [dragMeasureMoved, setDragMeasureMoved] = useState(false);
       const [suppressBoardClick, setSuppressBoardClick] = useState(false);
       const [isMeasuring, setIsMeasuring] = useState(false);
-      const [viewBox, setViewBox] = useState(defaultViewBox);
+      const [viewBox, setViewBox] = useState(DEFAULT_VIEWBOX);
 
       const currentLayoutSettings = layoutSettings[selectedLayout] || layoutDefaults[selectedLayout];
       const layoutRotation = currentLayoutSettings.rotation;
