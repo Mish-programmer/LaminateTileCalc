@@ -43,6 +43,11 @@
     const GEOMETRY_EPSILON = 0.000001;
     const VISIBLE_BOARD_STROKE_COLOR = "black";
     const HIDDEN_BOARD_STROKE_COLOR = "gray";
+    const MAX_LAYOUT_OFFSET = 2000;
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
 
     function projectPointToSegment(point, a, b) {
       const abx = b.x - a.x;
@@ -278,6 +283,8 @@
             <span>X:</span>
             <input
               type="number"
+              min={-MAX_LAYOUT_OFFSET}
+              max={MAX_LAYOUT_OFFSET}
               step="10"
               value={layoutOffsetX}
               disabled={!isClosed}
@@ -286,6 +293,8 @@
             <span>Y:</span>
             <input
               type="number"
+              min={-MAX_LAYOUT_OFFSET}
+              max={MAX_LAYOUT_OFFSET}
               step="10"
               value={layoutOffsetY}
               disabled={!isClosed}
@@ -1226,11 +1235,15 @@
       const layoutOffsetY = currentLayoutSettings.offsetY;
 
       function updateCurrentLayoutSetting(field, value) {
+        const nextValue = (field === "offsetX" || field === "offsetY")
+          ? clamp(value, -MAX_LAYOUT_OFFSET, MAX_LAYOUT_OFFSET)
+          : value;
+
         setLayoutSettings(prev => ({
           ...prev,
           [selectedLayout]: {
             ...(prev[selectedLayout] || layoutDefaults[selectedLayout]),
-            [field]: value
+            [field]: nextValue
           }
         }));
       }
