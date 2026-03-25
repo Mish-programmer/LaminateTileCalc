@@ -41,6 +41,8 @@
     const VIEWPORT_HEIGHT = 600;
     const DEFAULT_VIEWBOX = { minX: 0, minY: 0, width: 8000, height: 6000 };
     const GEOMETRY_EPSILON = 0.000001;
+    const VISIBLE_BOARD_STROKE_COLOR = "black";
+    const HIDDEN_BOARD_STROKE_COLOR = "gray";
 
     function projectPointToSegment(point, a, b) {
       const abx = b.x - a.x;
@@ -236,7 +238,7 @@
           points={points.map(point => `${point.x},${point.y}`).join(" ")}
           fill={fillColor}
           stroke={strokeColor}
-          strokeWidth={2}
+          strokeWidth={3}
           strokeDasharray={dash}
           onClick={onClick}
         />
@@ -856,7 +858,7 @@
               `plank-${key}`,
               transformedCorners,
               manuallyToggled ? "lightgray" : (isInside ? (angle === 45 ? "#deb887" : "#a1866f") : "#ffffff"),
-              finalVisible ? "#555" : "gray",
+              finalVisible ? VISIBLE_BOARD_STROKE_COLOR : HIDDEN_BOARD_STROKE_COLOR,
               finalVisible ? "" : "20,20",
               (e) => core.handleBoardClick(e, key)
             ));
@@ -952,7 +954,7 @@
               `french-${key}`,
               transformedPoints,
               manuallyToggled ? "lightgray" : (isInside ? boardColor : "#ffffff"),
-              finalVisible ? "#555" : "gray",
+              finalVisible ? VISIBLE_BOARD_STROKE_COLOR : HIDDEN_BOARD_STROKE_COLOR,
               finalVisible ? "" : "20,20",
               (e) => core.handleBoardClick(e, key)
             ));
@@ -1051,7 +1053,7 @@
                 `classic-${board.key}`,
                 transformedPoints,
                 manuallyToggled ? "lightgray" : (isInside ? board.color : "#ffffff"),
-                finalVisible ? "#555" : "gray",
+                finalVisible ? VISIBLE_BOARD_STROKE_COLOR : HIDDEN_BOARD_STROKE_COLOR,
                 finalVisible ? "" : "20,20",
                 (e) => core.handleBoardClick(e, board.key)
               ));
@@ -1174,7 +1176,7 @@
                 `braid-${board.key}`,
                 transformedPoints,
                 manuallyToggled ? "lightgray" : (isInside ? board.color : "#ffffff"),
-                finalVisible ? "#555" : "gray",
+                finalVisible ? VISIBLE_BOARD_STROKE_COLOR : HIDDEN_BOARD_STROKE_COLOR,
                 finalVisible ? "" : "20,20",
                 (e) => core.handleBoardClick(e, board.key)
               ));
