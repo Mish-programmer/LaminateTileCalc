@@ -236,7 +236,7 @@
           points={points.map(point => `${point.x},${point.y}`).join(" ")}
           fill={fillColor}
           stroke={strokeColor}
-          strokeWidth={10}
+          strokeWidth={2}
           strokeDasharray={dash}
           onClick={onClick}
         />
@@ -894,14 +894,26 @@
         const colDy = tileWidth / Math.SQRT2;
         const shiftDx = tileWidth / Math.SQRT2;
         const shiftDy = -tileWidth / Math.SQRT2;
-        const basisCoords = core.rotatedPoints.map(point => ({
+        const localRoomPoints = core.inverseRotatePatternPolygon(core.rotatedPoints);
+        const localXs = localRoomPoints.map(point => point.x);
+        const localYs = localRoomPoints.map(point => point.y);
+        const offsetReach = Math.abs(core.layoutOffsetX) + Math.abs(core.layoutOffsetY);
+        const padding = tileSize + tileWidth * 4 + offsetReach;
+        const coveragePoints = [
+          ...localRoomPoints,
+          { x: Math.min(...localXs) - padding, y: Math.min(...localYs) - padding },
+          { x: Math.max(...localXs) + padding, y: Math.min(...localYs) - padding },
+          { x: Math.max(...localXs) + padding, y: Math.max(...localYs) + padding },
+          { x: Math.min(...localXs) - padding, y: Math.max(...localYs) + padding }
+        ];
+        const basisCoords = coveragePoints.map(point => ({
           i: (point.x + point.y) / (2 * colDx),
           j: (point.x - point.y) / (2 * rowDx)
         }));
-        const minI = Math.floor(Math.min(...basisCoords.map(point => point.i))) - 4;
-        const maxI = Math.ceil(Math.max(...basisCoords.map(point => point.i))) + 4;
-        const minJ = Math.floor(Math.min(...basisCoords.map(point => point.j))) - 4;
-        const maxJ = Math.ceil(Math.max(...basisCoords.map(point => point.j))) + 4;
+        const minI = Math.floor(Math.min(...basisCoords.map(point => point.i))) - 2;
+        const maxI = Math.ceil(Math.max(...basisCoords.map(point => point.i))) + 2;
+        const minJ = Math.floor(Math.min(...basisCoords.map(point => point.j))) - 2;
+        const maxJ = Math.ceil(Math.max(...basisCoords.map(point => point.j))) + 2;
 
         for (let i = minI; i <= maxI; i++) {
           const boardType = i % 2 === 0 ? "A" : "B";
@@ -1295,7 +1307,7 @@
               moduleShiftXOverride={132}
               moduleShiftYOverride={-132 * Math.SQRT2-132}
               rowShiftXOverride={620 / Math.SQRT2 + 132}
-              rowShiftYOverride={-132}
+              rowShiftYOverride={620 - 132 - 620 / Math.SQRT2 - 132 * Math.SQRT2}
             />
           )}
           {selectedLayout === "braid" && <FrenchBraidPlanner roomState={roomState} />}
