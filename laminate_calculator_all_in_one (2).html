@@ -271,6 +271,8 @@
           <div className="flex items-center gap-2">
             <span>Угол:</span>
             <input
+              id="layout-rotation"
+              name="layoutRotation"
               type="number"
               min="-180"
               max="180"
@@ -282,6 +284,8 @@
             <span>°</span>
             <span>X:</span>
             <input
+              id="layout-offset-x"
+              name="layoutOffsetX"
               type="number"
               min={-MAX_LAYOUT_OFFSET}
               max={MAX_LAYOUT_OFFSET}
@@ -292,6 +296,8 @@
             />
             <span>Y:</span>
             <input
+              id="layout-offset-y"
+              name="layoutOffsetY"
               type="number"
               min={-MAX_LAYOUT_OFFSET}
               max={MAX_LAYOUT_OFFSET}
@@ -1290,10 +1296,12 @@
       return (
         <div>
           <div className="mb-4" style={{ maxWidth: "360px" }}>
-            <label style={{ marginBottom: "6px", fontWeight: "bold" }}>
+            <label htmlFor="layout-variant" style={{ marginBottom: "6px", fontWeight: "bold" }}>
               Варианты укладки:
             </label>
             <select
+              id="layout-variant"
+              name="layoutVariant"
               value={selectedLayout}
               onChange={(e) => setSelectedLayout(e.target.value)}
               style={{
