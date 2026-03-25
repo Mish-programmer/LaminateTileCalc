@@ -44,6 +44,36 @@
     const VISIBLE_BOARD_STROKE_COLOR = "black";
     const HIDDEN_BOARD_STROKE_COLOR = "gray";
     const MAX_LAYOUT_OFFSET = 2000;
+    const ITALIAN_LAYOUT_ROTATION = -23;
+    const ITALIAN_PAIR_B_OFFSET_Y = 620 - 132 * Math.SQRT2;
+    const ITALIAN_DUPLICATE_A_OFFSET = { x: 0, y: 132 * Math.SQRT2 };
+    const ITALIAN_DUPLICATE_B_OFFSET = { x: 132, y: -132 };
+    const ITALIAN_BRAID_PROPS = {
+      title: "Итальянская елка",
+      pairBOffsetY: ITALIAN_PAIR_B_OFFSET_Y,
+      moduleShiftXOverride: 132,
+      moduleShiftYOverride: -132 * Math.SQRT2 - 132,
+      rowShiftXOverride: 620 / Math.SQRT2 + 132,
+      rowShiftYOverride: 620 - 132 - 620 / Math.SQRT2 - 132 * Math.SQRT2
+    };
+    const DOUBLE_ITALIAN_BRAID_PROPS = {
+      title: "Двойная Итальянская",
+      pairBOffsetY: ITALIAN_PAIR_B_OFFSET_Y,
+      moduleShiftXOverride: 132 * 2,
+      moduleShiftYOverride: -264 * (Math.SQRT2 + 1),
+      rowShiftXOverride: 620 / Math.SQRT2,
+      rowShiftYOverride: 620 - 620 / Math.SQRT2,
+      duplicateABoardOffset: ITALIAN_DUPLICATE_A_OFFSET,
+      duplicateBBoardOffset: ITALIAN_DUPLICATE_B_OFFSET
+    };
+    const DEFAULT_LAYOUT_SETTINGS = {
+      english: { rotation: 90, offsetX: 0, offsetY: 0 },
+      variant2: { rotation: -45, offsetX: 0, offsetY: 0 },
+      classic: { rotation: 0, offsetX: 0, offsetY: 0 },
+      italian: { rotation: ITALIAN_LAYOUT_ROTATION, offsetX: 0, offsetY: 0 },
+      doubleItalian: { rotation: ITALIAN_LAYOUT_ROTATION, offsetX: 0, offsetY: 0 },
+      braid: { rotation: 67, offsetX: 0, offsetY: 0 }
+    };
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -234,6 +264,13 @@
           y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
         };
       });
+    }
+
+    function translatePolygon(points, dx, dy) {
+      return points.map(point => ({
+        x: point.x + dx,
+        y: point.y + dy
+      }));
     }
 
     function createBoardPolygon(id, points, fillColor, strokeColor, dash, onClick) {
@@ -1090,7 +1127,7 @@
       return <PlannerLayout title="Французская Классическая" stats={stats} core={core} pattern={pattern} />;
     }
 
-    function FrenchBraidPlanner({ roomState, title = "Царская елка", singlePair = false, singleRow = false, pairBOffsetY = 0, moduleShiftXOverride = null, moduleShiftYOverride = null, rowShiftXOverride = null, rowShiftYOverride = null, previewRowCount = null, previewRepeatCount = null }) {
+    function FrenchBraidPlanner({ roomState, title = "Царская елка", singlePair = false, singleRow = false, pairBOffsetY = 0, moduleShiftXOverride = null, moduleShiftYOverride = null, rowShiftXOverride = null, rowShiftYOverride = null, previewRowCount = null, previewRowStart = 0, previewRepeatCount = null, previewRepeatStart = 0, previewRowShiftXOverride = null, previewRowShiftYOverride = null, duplicateABoardOffset = null, duplicateBBoardOffset = null }) {
       const core = usePlannerCore(roomState);
       const tileSize = 620;
       const tileWidth = 132;
@@ -1115,28 +1152,74 @@
         const moduleShiftY = moduleShiftYOverride ?? -(shortEdgeLength - tileWidth);
         const rowShiftX = rowShiftXOverride ?? tileSize / Math.SQRT2;
         const rowShiftY = rowShiftYOverride ?? -(tileSize + tileSize / Math.SQRT2);
+        const effectiveRowShiftX = previewRowCount !== null && previewRowShiftXOverride !== null ? previewRowShiftXOverride : rowShiftX;
+        const effectiveRowShiftY = previewRowCount !== null && previewRowShiftYOverride !== null ? previewRowShiftYOverride : rowShiftY;
         const centerX = (minRoomX + maxRoomX) / 2;
         const centerY = (minRoomY + maxRoomY) / 2 - shortSide / 2;
-        const repeatReachX = Math.ceil((maxRoomX - minRoomX + tileSize * 4) / tileWidth) + 4;
-        const repeatReachY = Math.ceil((maxRoomY - minRoomY + tileSize * 4) / (shortEdgeLength - tileWidth)) + 4;
-        const repeatReach = Math.max(repeatReachX, repeatReachY);
-        const rowReachX = Math.ceil((maxRoomX - minRoomX + tileSize * 4) / rowShiftX) + 4;
-        const rowReachY = Math.ceil((maxRoomY - minRoomY + tileSize * 4) / Math.abs(rowShiftY)) + 4;
-        const rowReach = Math.max(rowReachX, rowReachY);
+        const offsetReach = Math.abs(core.layoutOffsetX) + Math.abs(core.layoutOffsetY);
+        const latticePadding = tileSize * 2 + offsetReach;
+        const latticeBounds = [
+          { x: minRoomX - latticePadding, y: minRoomY - latticePadding },
+          { x: maxRoomX + latticePadding, y: minRoomY - latticePadding },
+          { x: maxRoomX + latticePadding, y: maxRoomY + latticePadding },
+          { x: minRoomX - latticePadding, y: maxRoomY + latticePadding }
+        ];
+        const determinant = effectiveRowShiftX * moduleShiftY - effectiveRowShiftY * moduleShiftX;
+        const fallbackRepeatReachX = Math.ceil((maxRoomX - minRoomX + tileSize * 4) / Math.max(1, Math.abs(moduleShiftX))) + 4;
+        const fallbackRepeatReachY = Math.ceil((maxRoomY - minRoomY + tileSize * 4) / Math.max(1, Math.abs(moduleShiftY))) + 4;
+        const fallbackRepeatReach = Math.max(fallbackRepeatReachX, fallbackRepeatReachY);
+        const fallbackRowReachX = Math.ceil((maxRoomX - minRoomX + tileSize * 4) / Math.max(1, Math.abs(effectiveRowShiftX))) + 4;
+        const fallbackRowReachY = Math.ceil((maxRoomY - minRoomY + tileSize * 4) / Math.max(1, Math.abs(effectiveRowShiftY))) + 4;
+        const fallbackRowReach = Math.max(fallbackRowReachX, fallbackRowReachY);
+        let rowStart;
+        let rowEnd;
+        let repeatStart;
+        let repeatEnd;
+
+        if (previewRowCount !== null) {
+          rowStart = previewRowStart;
+          rowEnd = previewRowStart + Math.max(0, previewRowCount - 1);
+        } else if (singlePair || singleRow) {
+          rowStart = 0;
+          rowEnd = 0;
+        } else if (Math.abs(determinant) < GEOMETRY_EPSILON) {
+          rowStart = -fallbackRowReach;
+          rowEnd = fallbackRowReach;
+        } else {
+          const latticeRows = latticeBounds.map(point => (
+            ((point.x - centerX) * moduleShiftY - (point.y - centerY) * moduleShiftX) / determinant
+          ));
+          rowStart = Math.floor(Math.min(...latticeRows)) - 2;
+          rowEnd = Math.ceil(Math.max(...latticeRows)) + 2;
+        }
+
+        if (previewRepeatCount !== null) {
+          repeatStart = previewRepeatStart;
+          repeatEnd = previewRepeatStart + Math.max(0, previewRepeatCount - 1);
+        } else if (singlePair) {
+          repeatStart = 0;
+          repeatEnd = 0;
+        } else if (Math.abs(determinant) < GEOMETRY_EPSILON) {
+          repeatStart = -fallbackRepeatReach;
+          repeatEnd = fallbackRepeatReach;
+        } else {
+          const latticeRepeats = latticeBounds.map(point => (
+            ((point.y - centerY) * effectiveRowShiftX - (point.x - centerX) * effectiveRowShiftY) / determinant
+          ));
+          repeatStart = Math.floor(Math.min(...latticeRepeats)) - 2;
+          repeatEnd = Math.ceil(Math.max(...latticeRepeats)) + 2;
+        }
+
         const extraRenderPadding = tileSize;
         const renderMinX = minRoomX - extraRenderPadding;
         const renderMaxX = maxRoomX + extraRenderPadding;
         const renderMinY = minRoomY - extraRenderPadding;
         const renderMaxY = maxRoomY + extraRenderPadding;
-        const rowStart = previewRowCount !== null ? 0 : ((singlePair || singleRow) ? 0 : -rowReach);
-        const rowEnd = previewRowCount !== null ? Math.max(0, previewRowCount - 1) : ((singlePair || singleRow) ? 0 : rowReach);
-        const repeatStart = previewRepeatCount !== null ? 0 : (singlePair ? 0 : -repeatReach);
-        const repeatEnd = previewRepeatCount !== null ? Math.max(0, previewRepeatCount - 1) : (singlePair ? 0 : repeatReach);
 
         for (let row = rowStart; row <= rowEnd; row++) {
           for (let repeat = repeatStart; repeat <= repeatEnd; repeat++) {
-            const seamX = centerX + row * rowShiftX + repeat * moduleShiftX;
-            const y0 = centerY + row * rowShiftY + repeat * moduleShiftY;
+            const seamX = centerX + row * effectiveRowShiftX + repeat * moduleShiftX;
+            const y0 = centerY + row * effectiveRowShiftY + repeat * moduleShiftY;
             const boardA = {
               type: "A",
               color: "#d5b07b",
@@ -1162,7 +1245,25 @@
               ]
             };
 
-            for (const board of [boardA, boardB]) {
+            const boards = [boardA, boardB];
+
+            if (duplicateABoardOffset) {
+              boards.push({
+                ...boardA,
+                key: `BA2-${row}-${repeat}`,
+                points: translatePolygon(boardA.points, duplicateABoardOffset.x, duplicateABoardOffset.y)
+              });
+            }
+
+            if (duplicateBBoardOffset) {
+              boards.push({
+                ...boardB,
+                key: `BB2-${row}-${repeat}`,
+                points: translatePolygon(boardB.points, duplicateBBoardOffset.x, duplicateBBoardOffset.y)
+              });
+            }
+
+            for (const board of boards) {
               const transformedPoints = core.transformPatternPolygon(board.points);
               const isInside = polygonsIntersect(transformedPoints, core.rotatedPoints);
               const manuallyToggled = core.toggledPlanks.has(board.key);
@@ -1215,17 +1316,10 @@
 
     function FrenchLayoutsHub() {
       const [selectedLayout, setSelectedLayout] = useState("english");
-      const layoutDefaults = {
-        english: { rotation: 90, offsetX: 0, offsetY: 0 },
-        variant2: { rotation: -45, offsetX: 0, offsetY: 0 },
-        classic: { rotation: 0, offsetX: 0, offsetY: 0 },
-        italian: { rotation: -23, offsetX: 0, offsetY: 0 },
-        braid: { rotation: 67, offsetX: 0, offsetY: 0 }
-      };
       const [points, setPoints] = useState([]);
       const [isClosed, setIsClosed] = useState(false);
       const [mousePos, setMousePos] = useState(null);
-      const [layoutSettings, setLayoutSettings] = useState(layoutDefaults);
+      const [layoutSettings, setLayoutSettings] = useState(DEFAULT_LAYOUT_SETTINGS);
       const [measurements, setMeasurements] = useState([]);
       const [draftRulerStart, setDraftRulerStart] = useState(null);
       const [draftRulerEnd, setDraftRulerEnd] = useState(null);
@@ -1235,7 +1329,7 @@
       const [isMeasuring, setIsMeasuring] = useState(false);
       const [viewBox, setViewBox] = useState(DEFAULT_VIEWBOX);
 
-      const currentLayoutSettings = layoutSettings[selectedLayout] || layoutDefaults[selectedLayout];
+      const currentLayoutSettings = layoutSettings[selectedLayout] || DEFAULT_LAYOUT_SETTINGS[selectedLayout];
       const layoutRotation = currentLayoutSettings.rotation;
       const layoutOffsetX = currentLayoutSettings.offsetX;
       const layoutOffsetY = currentLayoutSettings.offsetY;
@@ -1248,7 +1342,7 @@
         setLayoutSettings(prev => ({
           ...prev,
           [selectedLayout]: {
-            ...(prev[selectedLayout] || layoutDefaults[selectedLayout]),
+            ...(prev[selectedLayout] || DEFAULT_LAYOUT_SETTINGS[selectedLayout]),
             [field]: nextValue
           }
         }));
@@ -1257,7 +1351,7 @@
       function resetCurrentLayoutSettings() {
         setLayoutSettings(prev => ({
           ...prev,
-          [selectedLayout]: { ...layoutDefaults[selectedLayout] }
+          [selectedLayout]: { ...DEFAULT_LAYOUT_SETTINGS[selectedLayout] }
         }));
       }
 
@@ -1312,10 +1406,11 @@
               }}
             >
               <option value="english">Английская елка</option>
-              <option value="variant2">Французская вариант 2</option>
               <option value="classic">Французская Классическая</option>
               <option value="italian">Итальянская елка</option>
+              <option value="doubleItalian">Двойная Итальянская</option>
               <option value="braid">Царская елка</option>
+              <option value="variant2">Французская вариант 2</option>
             </select>
           </div>
 
@@ -1325,12 +1420,13 @@
           {selectedLayout === "italian" && (
             <FrenchBraidPlanner
               roomState={roomState}
-              title="Итальянская елка"
-              pairBOffsetY={620 - 132 * Math.SQRT2}
-              moduleShiftXOverride={132}
-              moduleShiftYOverride={-132 * Math.SQRT2-132}
-              rowShiftXOverride={620 / Math.SQRT2 + 132}
-              rowShiftYOverride={620 - 132 - 620 / Math.SQRT2 - 132 * Math.SQRT2}
+              {...ITALIAN_BRAID_PROPS}
+            />
+          )}
+          {selectedLayout === "doubleItalian" && (
+            <FrenchBraidPlanner
+              roomState={roomState}
+              {...DOUBLE_ITALIAN_BRAID_PROPS}
             />
           )}
           {selectedLayout === "braid" && <FrenchBraidPlanner roomState={roomState} />}
