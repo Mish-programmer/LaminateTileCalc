@@ -44,6 +44,9 @@
     const VISIBLE_BOARD_STROKE_COLOR = "black";
     const HIDDEN_BOARD_STROKE_COLOR = "gray";
     const MAX_LAYOUT_OFFSET = 2000;
+    const MIN_ZOOM_SCALE = 0.5;
+    const MAX_ZOOM_SCALE = 3;
+    const ZOOM_STEP = 0.1;
     const ITALIAN_LAYOUT_ROTATION = -23;
     const ITALIAN_PAIR_B_OFFSET_Y = 620 - 132 * Math.SQRT2;
     const ITALIAN_DUPLICATE_A_OFFSET = { x: 0, y: 132 * Math.SQRT2 };
@@ -77,6 +80,27 @@
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
+    }
+
+    function scaleViewBox(baseViewBox, zoomScale) {
+      const width = baseViewBox.width / zoomScale;
+      const height = baseViewBox.height / zoomScale;
+      const centerX = baseViewBox.minX + baseViewBox.width / 2;
+      const centerY = baseViewBox.minY + baseViewBox.height / 2;
+
+      return {
+        minX: centerX - width / 2,
+        minY: centerY - height / 2,
+        width,
+        height
+      };
+    }
+
+    function getWorldUnitsPerScreenPixel(currentViewBox) {
+      return Math.max(
+        currentViewBox.width / VIEWPORT_WIDTH,
+        currentViewBox.height / VIEWPORT_HEIGHT
+      );
     }
 
     function projectPointToSegment(point, a, b) {
@@ -390,7 +414,7 @@
         handleMouseDown,
         handleMouseMove,
         handleMouseUp,
-        viewBox,
+        renderViewBox,
         gridLines,
         measurements,
         draftRulerStart,
@@ -404,196 +428,337 @@
         lastPoint,
         mousePos,
         hintMetrics,
+        pointerMode,
+        setPointerMode,
+        zoomScale,
+        setZoomScale,
         startMeasurement
       } = core;
 
+      const worldUnitsPerScreenPixel = getWorldUnitsPerScreenPixel(renderViewBox);
+      const screenUnits = (value) => value * worldUnitsPerScreenPixel;
+      const measurementLabelOffsetY = 0;
+      const edgeLabelOutline = screenUnits(1.5);
+      const measurementLabelFontSize = screenUnits(13.5);
+      const edgeLabelFontSize = screenUnits(12);
+      const hintPanelInset = screenUnits(7.5);
+      const hintPanelTop = screenUnits(17.5);
+      const hintPanelGap = screenUnits(16.5);
+
       return (
-        <svg
-          ref={svgRef}
-          onClick={handleClick}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          width={VIEWPORT_WIDTH}
-          height={VIEWPORT_HEIGHT}
-          viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
-          preserveAspectRatio="xMidYMid meet"
-          className="border border-gray-400 bg-white cursor-crosshair"
-          style={{
-            display: "block",
-            border: "2px solid #9ca3af",
-            backgroundColor: "#ffffff",
-            boxSizing: "border-box"
-          }}
-        >
-          <g>
-            {gridLines.vertical.map(x => (
-              <line
-                key={`grid-v-${x}`}
-                x1={x}
-                y1={gridLines.startY}
-                x2={x}
-                y2={gridLines.endY}
-                stroke="#eee"
-                strokeWidth={5}
-              />
-            ))}
-            {gridLines.horizontal.map(y => (
-              <line
-                key={`grid-h-${y}`}
-                x1={gridLines.startX}
-                y1={y}
-                x2={gridLines.endX}
-                y2={y}
-                stroke="#eee"
-                strokeWidth={10}
-              />
-            ))}
-            {pattern}
-            {measurements.map((measurement, index) => {
-              const length = Math.hypot(
-                measurement.end.x - measurement.start.x,
-                measurement.end.y - measurement.start.y
-              );
-              const midX = (measurement.start.x + measurement.end.x) / 2;
-              const midY = (measurement.start.y + measurement.end.y) / 2;
-              return (
-                <g key={`measurement-${index}`}>
+        <div style={{ position: "relative", width: `${VIEWPORT_WIDTH}px`, height: `${VIEWPORT_HEIGHT}px` }}>
+          <svg
+            ref={svgRef}
+            onClick={handleClick}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            width={VIEWPORT_WIDTH}
+            height={VIEWPORT_HEIGHT}
+            viewBox={`${renderViewBox.minX} ${renderViewBox.minY} ${renderViewBox.width} ${renderViewBox.height}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="border border-gray-400 bg-white"
+            style={{
+              display: "block",
+              border: "2px solid #9ca3af",
+              backgroundColor: "#ffffff",
+              boxSizing: "border-box",
+              cursor: isClosed && pointerMode === "pan" ? "grab" : "crosshair"
+            }}
+          >
+            <g>
+              {gridLines.vertical.map(x => (
+                <line
+                  key={`grid-v-${x}`}
+                  x1={x}
+                  y1={gridLines.startY}
+                  x2={x}
+                  y2={gridLines.endY}
+                  stroke="#eee"
+                  strokeWidth={5}
+                />
+              ))}
+              {gridLines.horizontal.map(y => (
+                <line
+                  key={`grid-h-${y}`}
+                  x1={gridLines.startX}
+                  y1={y}
+                  x2={gridLines.endX}
+                  y2={y}
+                  stroke="#eee"
+                  strokeWidth={10}
+                />
+              ))}
+              {pattern}
+              {measurements.map((measurement, index) => {
+                const length = Math.hypot(
+                  measurement.end.x - measurement.start.x,
+                  measurement.end.y - measurement.start.y
+                );
+                const midX = (measurement.start.x + measurement.end.x) / 2;
+                const midY = (measurement.start.y + measurement.end.y) / 2;
+                return (
+                  <g key={`measurement-${index}`}>
+                    <line
+                      x1={measurement.start.x}
+                      y1={measurement.start.y}
+                      x2={measurement.end.x}
+                      y2={measurement.end.y}
+                      stroke="#d62828"
+                      strokeWidth={12}
+                    />
+                    <text
+                      x={midX}
+                      y={midY - measurementLabelOffsetY}
+                      fontSize={measurementLabelFontSize}
+                      fill="#d62828"
+                      textAnchor="middle"
+                      stroke="#ffffff"
+                      strokeWidth={edgeLabelOutline}
+                      paintOrder="stroke"
+                    >
+                      {`${length.toFixed(0)} мм`}
+                    </text>
+                  </g>
+                );
+              })}
+              {draftRulerStart && draftRulerEnd && (
+                <g>
                   <line
-                    x1={measurement.start.x}
-                    y1={measurement.start.y}
-                    x2={measurement.end.x}
-                    y2={measurement.end.y}
+                    x1={draftRulerStart.x}
+                    y1={draftRulerStart.y}
+                    x2={draftRulerEnd.x}
+                    y2={draftRulerEnd.y}
                     stroke="#d62828"
                     strokeWidth={12}
                   />
                   <text
-                    x={midX}
-                    y={midY - 20}
-                    fontSize={90}
+                    x={rulerMidX}
+                    y={rulerMidY - measurementLabelOffsetY}
+                    fontSize={measurementLabelFontSize}
                     fill="#d62828"
                     textAnchor="middle"
                     stroke="#ffffff"
-                    strokeWidth={10}
+                    strokeWidth={edgeLabelOutline}
                     paintOrder="stroke"
                   >
-                    {`${length.toFixed(0)} мм`}
+                    {`${rulerLength.toFixed(0)} мм`}
                   </text>
                 </g>
-              );
-            })}
-            {draftRulerStart && draftRulerEnd && (
-              <g>
-                <line
-                  x1={draftRulerStart.x}
-                  y1={draftRulerStart.y}
-                  x2={draftRulerEnd.x}
-                  y2={draftRulerEnd.y}
-                  stroke="#d62828"
-                  strokeWidth={12}
-                />
-                <text
-                  x={rulerMidX}
-                  y={rulerMidY - 20}
-                  fontSize={90}
-                  fill="#d62828"
-                  textAnchor="middle"
-                  stroke="#ffffff"
-                  strokeWidth={10}
-                  paintOrder="stroke"
-                >
-                  {`${rulerLength.toFixed(0)} мм`}
-                </text>
-              </g>
-            )}
-            {rotatedPoints.map((point, index) => (
-              <g key={`point-${index}`}>
-                <circle cx={point.x} cy={point.y} r={20} fill="red" />
-                <text x={point.x + 30} y={point.y - 30} fontSize={120} fill="black">{index + 1}</text>
-              </g>
-            ))}
-            {rotatedPoints.map((point, index) => {
-              const next = rotatedPoints[(index + 1) % rotatedPoints.length];
-              if (index === points.length - 1 && !isClosed) return null;
-              const edgeMetrics = getSegmentLabelMetrics(point, next, 45);
-              return (
-                <g key={`edge-${index}`}>
-                  <line
-                    x1={point.x}
-                    y1={point.y}
-                    x2={next.x}
-                    y2={next.y}
-                    stroke="black"
-                    strokeWidth={10}
-                    onClick={(e) => startMeasurement(e, point, next)}
-                  />
-                  <text
-                    x={edgeMetrics.textX}
-                    y={edgeMetrics.textY}
-                    fontSize={80}
-                    fill="#111827"
-                    textAnchor="middle"
-                    stroke="#ffffff"
-                    strokeWidth={10}
-                    paintOrder="stroke"
-                    pointerEvents="none"
-                    transform={`rotate(${edgeMetrics.labelAngle} ${edgeMetrics.textX} ${edgeMetrics.textY})`}
-                  >
-                    {`${edgeMetrics.distance.toFixed(0)} мм`}
-                  </text>
+              )}
+              {rotatedPoints.map((point, index) => (
+                <g key={`point-${index}`}>
+                  <circle cx={point.x} cy={point.y} r={20} fill="red" />
+                  <text x={point.x + 30} y={point.y - 30} fontSize={120} fill="black">{index + 1}</text>
                 </g>
-              );
-            })}
-            {lastPoint && mousePos && !isClosed && (
-              <g>
-                <line
-                  x1={lastPoint.x}
-                  y1={lastPoint.y}
-                  x2={mousePos.x}
-                  y2={mousePos.y}
-                  stroke="orange"
-                  strokeWidth={10}
-                  strokeDasharray="10,10"
-                />
-                {hintMetrics && (
-                  <>
+              ))}
+              {rotatedPoints.map((point, index) => {
+                const next = rotatedPoints[(index + 1) % rotatedPoints.length];
+                if (index === points.length - 1 && !isClosed) return null;
+                const edgeMetrics = getSegmentLabelMetrics(point, next, 0);
+                return (
+                  <g key={`edge-${index}`}>
+                    <line
+                      x1={point.x}
+                      y1={point.y}
+                      x2={next.x}
+                      y2={next.y}
+                      stroke="black"
+                      strokeWidth={10}
+                      onClick={(e) => startMeasurement(e, point, next)}
+                    />
                     <text
-                      x={hintMetrics.textX}
-                      y={hintMetrics.textY}
-                      fontSize={90}
-                      fill="#c2410c"
+                      x={edgeMetrics.textX}
+                      y={edgeMetrics.textY}
+                      fontSize={edgeLabelFontSize}
+                      fill="#111827"
                       textAnchor="middle"
                       stroke="#ffffff"
-                      strokeWidth={10}
+                      strokeWidth={edgeLabelOutline}
                       paintOrder="stroke"
                       pointerEvents="none"
-                      transform={`rotate(${hintMetrics.labelAngle} ${hintMetrics.textX} ${hintMetrics.textY})`}
+                      transform={`rotate(${edgeMetrics.labelAngle} ${edgeMetrics.textX} ${edgeMetrics.textY})`}
                     >
-                      {`${hintMetrics.distance.toFixed(0)} мм, ${hintMetrics.angle.toFixed(1)}°`}
+                      {`${edgeMetrics.distance.toFixed(0)} мм`}
                     </text>
-                    <text
-                      x={viewBox.minX + viewBox.width - 60}
-                      y={viewBox.minY + 140}
-                      fontSize={90}
-                      fill="#111827"
-                      textAnchor="end"
-                      stroke="#ffffff"
-                      strokeWidth={10}
-                      paintOrder="stroke"
-                    >
-                      <tspan x={viewBox.minX + viewBox.width - 60} dy="0">
-                        {`dx: ${hintMetrics.dx.toFixed(0)} мм`}
-                      </tspan>
-                      <tspan x={viewBox.minX + viewBox.width - 60} dy="110">
-                        {`dy: ${hintMetrics.dy.toFixed(0)} мм`}
-                      </tspan>
-                    </text>
-                  </>
-                )}
-              </g>
-            )}
-          </g>
-        </svg>
+                  </g>
+                );
+              })}
+              {lastPoint && mousePos && !isClosed && (
+                <g>
+                  <line
+                    x1={lastPoint.x}
+                    y1={lastPoint.y}
+                    x2={mousePos.x}
+                    y2={mousePos.y}
+                    stroke="orange"
+                    strokeWidth={10}
+                    strokeDasharray="10,10"
+                  />
+                  {hintMetrics && (
+                    <>
+                      <text
+                        x={hintMetrics.textX}
+                        y={hintMetrics.textY}
+                        fontSize={measurementLabelFontSize}
+                        fill="#c2410c"
+                        textAnchor="middle"
+                        stroke="#ffffff"
+                        strokeWidth={edgeLabelOutline}
+                        paintOrder="stroke"
+                        pointerEvents="none"
+                        transform={`rotate(${hintMetrics.labelAngle} ${hintMetrics.textX} ${hintMetrics.textY})`}
+                      >
+                        {`${hintMetrics.distance.toFixed(0)} мм, ${hintMetrics.angle.toFixed(1)}°`}
+                      </text>
+                      <text
+                        x={renderViewBox.minX + renderViewBox.width - hintPanelInset}
+                        y={renderViewBox.minY + hintPanelTop}
+                        fontSize={measurementLabelFontSize}
+                        fill="#111827"
+                        textAnchor="end"
+                        stroke="#ffffff"
+                        strokeWidth={edgeLabelOutline}
+                        paintOrder="stroke"
+                      >
+                        <tspan x={renderViewBox.minX + renderViewBox.width - hintPanelInset} dy="0">
+                          {`dx: ${hintMetrics.dx.toFixed(0)} мм`}
+                        </tspan>
+                        <tspan x={renderViewBox.minX + renderViewBox.width - hintPanelInset} dy={hintPanelGap}>
+                          {`dy: ${hintMetrics.dy.toFixed(0)} мм`}
+                        </tspan>
+                      </text>
+                    </>
+                  )}
+                </g>
+              )}
+            </g>
+          </svg>
+          <div
+            style={{
+              position: "absolute",
+              right: "2px",
+              top: "39%",
+              transform: "translateY(-39%)",
+              backgroundColor: "rgba(255, 255, 255, 0.9)",
+              border: "1px solid #cbd5e1",
+              borderRadius: "7px",
+              padding: "3px 3px 4px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "3px",
+              boxShadow: "0 4px 12px rgba(15, 23, 42, 0.12)"
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Режим перемещения"
+              title="Режим перемещения"
+              onClick={() => setPointerMode("pan")}
+              style={{
+                width: "28px",
+                height: "28px",
+                padding: "0",
+                borderRadius: "5px",
+                border: pointerMode === "pan" ? "1px solid #1d4ed8" : "1px solid #cbd5e1",
+                backgroundColor: pointerMode === "pan" ? "#dbeafe" : "#ffffff",
+                color: "#111827",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "relative",
+                  width: "16px",
+                  height: "16px",
+                  display: "inline-block",
+                  fontSize: "13px",
+                  lineHeight: "16px",
+                  fontWeight: "700"
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    inset: "0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}
+                >
+                  ↕
+                </span>
+                <span
+                  style={{
+                    position: "absolute",
+                    inset: "0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}
+                >
+                  ↔
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-label="Режим измерения"
+              title="Режим измерения"
+              onClick={() => setPointerMode("measure")}
+              style={{
+                width: "28px",
+                height: "28px",
+                padding: "0",
+                borderRadius: "5px",
+                border: pointerMode === "measure" ? "1px solid #1d4ed8" : "1px solid #cbd5e1",
+                backgroundColor: pointerMode === "measure" ? "#dbeafe" : "#ffffff",
+                color: "#111827",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "2px"
+              }}
+            >
+              <svg width="19" height="19" viewBox="0 0 18 18" aria-hidden="true">
+                <path d="M3 14.5 14.5 3 16 4.5 4.5 16H3v-1.5Zm1.7-.5h.7l9.9-9.9-.7-.7L4.7 13.3v.7ZM6.2 11.8l1-1 1 1-1 1-1-1Zm2.1-2.1 1-1 1 1-1 1-1-1Zm2.1-2.1 1-1 1 1-1 1-1-1Zm2.1-2.1 1-1 1 1-1 1-1-1Z" fill="currentColor"/>
+              </svg>
+            </button>
+            <div
+              style={{
+                position: "relative",
+                width: "20px",
+                height: "62px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <input
+                type="range"
+                min={MIN_ZOOM_SCALE}
+                max={MAX_ZOOM_SCALE}
+                step={ZOOM_STEP}
+                value={zoomScale}
+                onChange={(e) => setZoomScale(parseFloat(e.target.value))}
+                style={{
+                  position: "absolute",
+                  width: "68px",
+                  transform: "rotate(-90deg)",
+                  transformOrigin: "center"
+                }}
+              />
+            </div>
+          </div>
+        </div>
       );
     }
 
@@ -642,11 +807,15 @@
         setSuppressBoardClick,
         isMeasuring,
         setIsMeasuring,
-        resetCurrentLayoutSettings
+        resetCurrentLayoutSettings,
+        selectedLayout
       } = roomState;
 
       const svgRef = useRef(null);
       const [toggledPlanks, setToggledPlanks] = useState(new Set());
+      const [pointerMode, setPointerMode] = useState("measure");
+      const [zoomScale, setZoomScale] = useState(1);
+      const panStateRef = useRef(null);
       const rotatedPoints = points;
 
       const rotationCenter = useMemo(() => {
@@ -690,7 +859,7 @@
       }
 
       function startMeasurement(e, start, end) {
-        if (!isClosed) return;
+        if (!isClosed || pointerMode !== "measure") return;
         e.stopPropagation();
         const point = projectPointToSegment(getSvgCoordinates(e), start, end);
         setDraftRulerStart(point);
@@ -701,7 +870,19 @@
       }
 
       function handleMouseDown(e) {
-        if (!isClosed || e.button !== 0 || isMeasuring) return;
+        if (!isClosed || e.button !== 0) return;
+
+        if (pointerMode === "pan") {
+          panStateRef.current = {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            viewBox,
+            renderViewBox
+          };
+          return;
+        }
+
+        if (isMeasuring) return;
         const coords = getSvgCoordinates(e);
         setDragMeasureStart(coords);
         setDragMeasureMoved(false);
@@ -710,6 +891,10 @@
       }
 
       function handleMouseUp(e) {
+        if (panStateRef.current) {
+          panStateRef.current = null;
+          return;
+        }
         if (!dragMeasureStart) return;
         const coords = getSvgCoordinates(e);
         finalizeMeasurement(coords, true);
@@ -717,6 +902,7 @@
 
       function handleClick(e) {
         if (isClosed) {
+          if (pointerMode === "pan") return;
           if (isMeasuring && !dragMeasureStart) {
             finalizeMeasurement(getSvgCoordinates(e));
           }
@@ -728,6 +914,21 @@
       }
 
       function handleMouseMove(e) {
+        if (panStateRef.current) {
+          const panStart = panStateRef.current;
+          const dxPixels = e.clientX - panStart.clientX;
+          const dyPixels = e.clientY - panStart.clientY;
+          const unitPerPixelX = panStart.renderViewBox.width / VIEWPORT_WIDTH;
+          const unitPerPixelY = panStart.renderViewBox.height / VIEWPORT_HEIGHT;
+
+          setViewBox({
+            ...panStart.viewBox,
+            minX: panStart.viewBox.minX - dxPixels * unitPerPixelX,
+            minY: panStart.viewBox.minY - dyPixels * unitPerPixelY
+          });
+          return;
+        }
+
         const coords = getSvgCoordinates(e);
 
         if (dragMeasureStart) {
@@ -753,6 +954,7 @@
       function closePolygon() {
         if (points.length >= 3) {
           setIsClosed(true);
+          setZoomScale(1);
           setViewBox(buildFittedViewBox(points));
         }
       }
@@ -766,6 +968,8 @@
         setMeasurements([]);
         setDraftRulerStart(null);
         setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        panStateRef.current = null;
         setIsMeasuring(false);
       }
 
@@ -782,6 +986,8 @@
         setDragMeasureMoved(false);
         setSuppressBoardClick(false);
         setIsMeasuring(false);
+        setPointerMode("measure");
+        setZoomScale(1);
         setViewBox(DEFAULT_VIEWBOX);
       }
 
@@ -845,6 +1051,10 @@
       function handleBoardClick(e, key) {
         e.stopPropagation();
 
+        if (pointerMode === "pan") {
+          return;
+        }
+
         if (suppressBoardClick) {
           setSuppressBoardClick(false);
           return;
@@ -867,20 +1077,43 @@
         if (isClosed) {
           setToggledPlanks(new Set());
         }
-      }, [layoutRotation, isClosed]);
+      }, [layoutRotation, layoutOffsetX, layoutOffsetY, isClosed]);
 
       useEffect(() => {
-        if (!isClosed) return;
-        setViewBox(buildFittedViewBox(rotatedPoints));
-      }, [layoutRotation, isClosed, rotatedPoints]);
+        if (pointerMode !== "measure") {
+          setDraftRulerStart(null);
+          setDraftRulerEnd(null);
+          setDragMeasureStart(null);
+          setDragMeasureMoved(false);
+          setIsMeasuring(false);
+          panStateRef.current = null;
+        }
+      }, [pointerMode]);
 
+      useEffect(() => {
+        setPointerMode("measure");
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setIsMeasuring(false);
+        setSuppressBoardClick(false);
+        panStateRef.current = null;
+
+        if (!isClosed) return;
+        setZoomScale(1);
+        setViewBox(buildFittedViewBox(points));
+      }, [selectedLayout]);
+
+      const renderViewBox = useMemo(() => scaleViewBox(viewBox, zoomScale), [viewBox, zoomScale]);
+      const worldUnitsPerScreenPixel = getWorldUnitsPerScreenPixel(renderViewBox);
       const area = isClosed ? polygonArea(rotatedPoints) : 0;
       const areaM2 = (area / 1_000_000).toFixed(2);
       const lastPoint = points[points.length - 1];
       const hintMetrics = lastPoint && mousePos && !isClosed
-        ? getSegmentLabelMetrics(lastPoint, mousePos, 45)
+        ? getSegmentLabelMetrics(lastPoint, mousePos, 0)
         : null;
-      const gridLines = useMemo(() => buildGridLines(viewBox), [viewBox]);
+      const gridLines = useMemo(() => buildGridLines(renderViewBox), [renderViewBox]);
       const rulerLength = draftRulerStart && draftRulerEnd
         ? Math.hypot(draftRulerEnd.x - draftRulerStart.x, draftRulerEnd.y - draftRulerStart.y)
         : 0;
@@ -897,7 +1130,7 @@
         setLayoutOffsetX,
         layoutOffsetY,
         setLayoutOffsetY,
-        viewBox,
+        renderViewBox,
         measurements,
         draftRulerStart,
         draftRulerEnd,
@@ -922,6 +1155,10 @@
         startMeasurement,
         areaM2,
         hintMetrics,
+        pointerMode,
+        setPointerMode,
+        zoomScale,
+        setZoomScale,
         gridLines,
         lastPoint,
         rulerLength,
@@ -1031,7 +1268,12 @@
         const localXs = localRoomPoints.map(point => point.x);
         const localYs = localRoomPoints.map(point => point.y);
         const offsetReach = Math.abs(core.layoutOffsetX) + Math.abs(core.layoutOffsetY);
-        const padding = tileSize + tileWidth * 4 + offsetReach;
+        const padding = tileSize + tileWidth * 2.5 + offsetReach;
+        const renderPadding = tileSize * 0.75 + tileWidth + offsetReach * 0.5;
+        const renderMinX = Math.min(...localXs) - renderPadding;
+        const renderMaxX = Math.max(...localXs) + renderPadding;
+        const renderMinY = Math.min(...localYs) - renderPadding;
+        const renderMaxY = Math.max(...localYs) + renderPadding;
         const coveragePoints = [
           ...localRoomPoints,
           { x: Math.min(...localXs) - padding, y: Math.min(...localYs) - padding },
@@ -1043,10 +1285,10 @@
           i: (point.x + point.y) / (2 * colDx),
           j: (point.x - point.y) / (2 * rowDx)
         }));
-        const minI = Math.floor(Math.min(...basisCoords.map(point => point.i))) - 2;
-        const maxI = Math.ceil(Math.max(...basisCoords.map(point => point.i))) + 2;
-        const minJ = Math.floor(Math.min(...basisCoords.map(point => point.j))) - 2;
-        const maxJ = Math.ceil(Math.max(...basisCoords.map(point => point.j))) + 2;
+        const minI = Math.floor(Math.min(...basisCoords.map(point => point.i))) - 1;
+        const maxI = Math.ceil(Math.max(...basisCoords.map(point => point.i))) + 1;
+        const minJ = Math.floor(Math.min(...basisCoords.map(point => point.j))) - 1;
+        const maxJ = Math.ceil(Math.max(...basisCoords.map(point => point.j))) + 1;
 
         for (let i = minI; i <= maxI; i++) {
           const boardType = i % 2 === 0 ? "A" : "B";
@@ -1066,6 +1308,17 @@
               { x: baseX + rowDx + colDx + topShiftX, y: baseY + rowDy + colDy + topShiftY },
               { x: baseX + colDx + topShiftX, y: baseY + colDy + topShiftY }
             ];
+            const boardXs = boardPoints.map(point => point.x);
+            const boardYs = boardPoints.map(point => point.y);
+            const boardOutsideRenderBounds = Math.max(...boardXs) < renderMinX
+              || Math.min(...boardXs) > renderMaxX
+              || Math.max(...boardYs) < renderMinY
+              || Math.min(...boardYs) > renderMaxY;
+
+            if (boardOutsideRenderBounds) {
+              continue;
+            }
+
             const transformedPoints = core.transformPatternPolygon(boardPoints);
             const isInside = polygonsIntersect(transformedPoints, core.rotatedPoints);
             const manuallyToggled = core.toggledPlanks.has(key);
@@ -1448,6 +1701,7 @@
         layoutOffsetY,
         setLayoutOffsetY: (value) => updateCurrentLayoutSetting("offsetY", value),
         resetCurrentLayoutSettings,
+        selectedLayout,
         measurements,
         setMeasurements,
         draftRulerStart,
