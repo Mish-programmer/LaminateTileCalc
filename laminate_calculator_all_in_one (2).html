@@ -858,6 +858,14 @@
         return shouldSave;
       }
 
+      function clearDraftMeasurement() {
+        setDraftRulerStart(null);
+        setDraftRulerEnd(null);
+        setDragMeasureStart(null);
+        setDragMeasureMoved(false);
+        setIsMeasuring(false);
+      }
+
       function startMeasurement(e, start, end) {
         if (!isClosed || pointerMode !== "measure") return;
         e.stopPropagation();
@@ -886,8 +894,6 @@
         const coords = getSvgCoordinates(e);
         setDragMeasureStart(coords);
         setDragMeasureMoved(false);
-        setDraftRulerStart(coords);
-        setDraftRulerEnd(coords);
       }
 
       function handleMouseUp(e) {
@@ -897,7 +903,15 @@
         }
         if (!dragMeasureStart) return;
         const coords = getSvgCoordinates(e);
-        finalizeMeasurement(coords, true);
+        const wasDragMeasurement = dragMeasureMoved;
+
+        if (wasDragMeasurement) {
+          finalizeMeasurement(coords);
+          setSuppressBoardClick(true);
+          return;
+        }
+
+        clearDraftMeasurement();
       }
 
       function handleClick(e) {
@@ -933,10 +947,15 @@
 
         if (dragMeasureStart) {
           setMousePos(coords);
-          setDraftRulerEnd(coords);
           if (!dragMeasureMoved && Math.hypot(coords.x - dragMeasureStart.x, coords.y - dragMeasureStart.y) > 5) {
             setDragMeasureMoved(true);
             setIsMeasuring(true);
+            setDraftRulerStart(dragMeasureStart);
+            setDraftRulerEnd(coords);
+            return;
+          }
+          if (dragMeasureMoved) {
+            setDraftRulerEnd(coords);
           }
           return;
         }
