@@ -273,6 +273,37 @@
       }));
     }
 
+    function normalizeTextAngle(angleDeg) {
+      if (angleDeg > 90) return angleDeg - 180;
+      if (angleDeg < -90) return angleDeg + 180;
+      return angleDeg;
+    }
+
+    function getSegmentLabelMetrics(start, end, offset = 40) {
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const distance = Math.hypot(dx, dy);
+      const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+      const labelAngle = normalizeTextAngle(angle);
+      const midX = (start.x + end.x) / 2;
+      const midY = (start.y + end.y) / 2;
+      const normalLength = distance === 0 ? 1 : distance;
+      const normalX = -dy / normalLength;
+      const normalY = dx / normalLength;
+
+      return {
+        dx,
+        dy,
+        distance,
+        angle,
+        labelAngle,
+        midX,
+        midY,
+        textX: midX + normalX * offset,
+        textY: midY + normalY * offset
+      };
+    }
+
     function createBoardPolygon(id, points, fillColor, strokeColor, dash, onClick) {
       return (
         <polygon
@@ -372,6 +403,7 @@
         isClosed,
         lastPoint,
         mousePos,
+        hintMetrics,
         startMeasurement
       } = core;
 
@@ -483,29 +515,82 @@
             {rotatedPoints.map((point, index) => {
               const next = rotatedPoints[(index + 1) % rotatedPoints.length];
               if (index === points.length - 1 && !isClosed) return null;
+              const edgeMetrics = getSegmentLabelMetrics(point, next, 45);
               return (
-                <line
-                  key={`edge-${index}`}
-                  x1={point.x}
-                  y1={point.y}
-                  x2={next.x}
-                  y2={next.y}
-                  stroke="black"
-                  strokeWidth={10}
-                  onClick={(e) => startMeasurement(e, point, next)}
-                />
+                <g key={`edge-${index}`}>
+                  <line
+                    x1={point.x}
+                    y1={point.y}
+                    x2={next.x}
+                    y2={next.y}
+                    stroke="black"
+                    strokeWidth={10}
+                    onClick={(e) => startMeasurement(e, point, next)}
+                  />
+                  <text
+                    x={edgeMetrics.textX}
+                    y={edgeMetrics.textY}
+                    fontSize={80}
+                    fill="#111827"
+                    textAnchor="middle"
+                    stroke="#ffffff"
+                    strokeWidth={10}
+                    paintOrder="stroke"
+                    pointerEvents="none"
+                    transform={`rotate(${edgeMetrics.labelAngle} ${edgeMetrics.textX} ${edgeMetrics.textY})`}
+                  >
+                    {`${edgeMetrics.distance.toFixed(0)} мм`}
+                  </text>
+                </g>
               );
             })}
             {lastPoint && mousePos && !isClosed && (
-              <line
-                x1={lastPoint.x}
-                y1={lastPoint.y}
-                x2={mousePos.x}
-                y2={mousePos.y}
-                stroke="orange"
-                strokeWidth={10}
-                strokeDasharray="10,10"
-              />
+              <g>
+                <line
+                  x1={lastPoint.x}
+                  y1={lastPoint.y}
+                  x2={mousePos.x}
+                  y2={mousePos.y}
+                  stroke="orange"
+                  strokeWidth={10}
+                  strokeDasharray="10,10"
+                />
+                {hintMetrics && (
+                  <>
+                    <text
+                      x={hintMetrics.textX}
+                      y={hintMetrics.textY}
+                      fontSize={90}
+                      fill="#c2410c"
+                      textAnchor="middle"
+                      stroke="#ffffff"
+                      strokeWidth={10}
+                      paintOrder="stroke"
+                      pointerEvents="none"
+                      transform={`rotate(${hintMetrics.labelAngle} ${hintMetrics.textX} ${hintMetrics.textY})`}
+                    >
+                      {`${hintMetrics.distance.toFixed(0)} мм, ${hintMetrics.angle.toFixed(1)}°`}
+                    </text>
+                    <text
+                      x={viewBox.minX + viewBox.width - 60}
+                      y={viewBox.minY + 140}
+                      fontSize={90}
+                      fill="#111827"
+                      textAnchor="end"
+                      stroke="#ffffff"
+                      strokeWidth={10}
+                      paintOrder="stroke"
+                    >
+                      <tspan x={viewBox.minX + viewBox.width - 60} dy="0">
+                        {`dx: ${hintMetrics.dx.toFixed(0)} мм`}
+                      </tspan>
+                      <tspan x={viewBox.minX + viewBox.width - 60} dy="110">
+                        {`dy: ${hintMetrics.dy.toFixed(0)} мм`}
+                      </tspan>
+                    </text>
+                  </>
+                )}
+              </g>
             )}
           </g>
         </svg>
@@ -521,9 +606,6 @@
               <div key={`stat-${index}`}>{item}</div>
             ))}
           </div>
-          {core.hintText && (
-            <div className="mb-2 text-sm text-gray-700">{core.hintText}</div>
-          )}
           <PlannerToolbar core={core} />
           <PlannerCanvas core={core} pattern={pattern} />
         </div>
@@ -669,7 +751,10 @@
       }
 
       function closePolygon() {
-        if (points.length >= 3) setIsClosed(true);
+        if (points.length >= 3) {
+          setIsClosed(true);
+          setViewBox(buildFittedViewBox(points));
+        }
       }
 
       function undoLastPoint() {
@@ -787,20 +872,14 @@
       useEffect(() => {
         if (!isClosed) return;
         setViewBox(buildFittedViewBox(rotatedPoints));
-      }, [layoutRotation]);
+      }, [layoutRotation, isClosed, rotatedPoints]);
 
       const area = isClosed ? polygonArea(rotatedPoints) : 0;
       const areaM2 = (area / 1_000_000).toFixed(2);
       const lastPoint = points[points.length - 1];
-      const hintText = lastPoint && mousePos && !isClosed
-        ? (() => {
-            const dx = mousePos.x - lastPoint.x;
-            const dy = mousePos.y - lastPoint.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-            return `dx: ${dx.toFixed(0)} mm, dy: ${dy.toFixed(0)} mm, distance: ${dist.toFixed(0)} mm, angle: ${angle.toFixed(1)}°`;
-          })()
-        : "";
+      const hintMetrics = lastPoint && mousePos && !isClosed
+        ? getSegmentLabelMetrics(lastPoint, mousePos, 45)
+        : null;
       const gridLines = useMemo(() => buildGridLines(viewBox), [viewBox]);
       const rulerLength = draftRulerStart && draftRulerEnd
         ? Math.hypot(draftRulerEnd.x - draftRulerStart.x, draftRulerEnd.y - draftRulerStart.y)
@@ -842,7 +921,7 @@
         reset,
         startMeasurement,
         areaM2,
-        hintText,
+        hintMetrics,
         gridLines,
         lastPoint,
         rulerLength,
