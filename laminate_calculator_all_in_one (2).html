@@ -47,25 +47,29 @@
     const MIN_ZOOM_SCALE = 0.5;
     const MAX_ZOOM_SCALE = 3;
     const ZOOM_STEP = 0.1;
+    const FRENCH_BOARD_LENGTH = 620;
+    const FRENCH_BOARD_WIDTH = 132;
+    const FRENCH_BOARD_CUT_ANGLE = 45;
+    const FRENCH_BOARD_DESCRIPTION = `Доска: ${FRENCH_BOARD_LENGTH} x ${FRENCH_BOARD_WIDTH} мм, спил ${FRENCH_BOARD_CUT_ANGLE}°`;
     const ITALIAN_LAYOUT_ROTATION = -23;
-    const ITALIAN_PAIR_B_OFFSET_Y = 620 - 132 * Math.SQRT2;
-    const ITALIAN_DUPLICATE_A_OFFSET = { x: 0, y: 132 * Math.SQRT2 };
-    const ITALIAN_DUPLICATE_B_OFFSET = { x: 132, y: -132 };
+    const ITALIAN_PAIR_B_OFFSET_Y = FRENCH_BOARD_LENGTH - FRENCH_BOARD_WIDTH * Math.SQRT2;
+    const ITALIAN_DUPLICATE_A_OFFSET = { x: 0, y: FRENCH_BOARD_WIDTH * Math.SQRT2 };
+    const ITALIAN_DUPLICATE_B_OFFSET = { x: FRENCH_BOARD_WIDTH, y: -FRENCH_BOARD_WIDTH };
     const ITALIAN_BRAID_PROPS = {
       title: "Итальянская елка",
       pairBOffsetY: ITALIAN_PAIR_B_OFFSET_Y,
-      moduleShiftXOverride: 132,
-      moduleShiftYOverride: -132 * Math.SQRT2 - 132,
-      rowShiftXOverride: 620 / Math.SQRT2 + 132,
-      rowShiftYOverride: 620 - 132 - 620 / Math.SQRT2 - 132 * Math.SQRT2
+      moduleShiftXOverride: FRENCH_BOARD_WIDTH,
+      moduleShiftYOverride: -FRENCH_BOARD_WIDTH * Math.SQRT2 - FRENCH_BOARD_WIDTH,
+      rowShiftXOverride: FRENCH_BOARD_LENGTH / Math.SQRT2 + FRENCH_BOARD_WIDTH,
+      rowShiftYOverride: FRENCH_BOARD_LENGTH - FRENCH_BOARD_WIDTH - FRENCH_BOARD_LENGTH / Math.SQRT2 - FRENCH_BOARD_WIDTH * Math.SQRT2
     };
     const DOUBLE_ITALIAN_BRAID_PROPS = {
       title: "Двойная Итальянская",
       pairBOffsetY: ITALIAN_PAIR_B_OFFSET_Y,
-      moduleShiftXOverride: 132 * 2,
-      moduleShiftYOverride: -264 * (Math.SQRT2 + 1),
-      rowShiftXOverride: 620 / Math.SQRT2,
-      rowShiftYOverride: 620 - 620 / Math.SQRT2,
+      moduleShiftXOverride: FRENCH_BOARD_WIDTH * 2,
+      moduleShiftYOverride: -FRENCH_BOARD_WIDTH * 2 * (Math.SQRT2 + 1),
+      rowShiftXOverride: FRENCH_BOARD_LENGTH / Math.SQRT2,
+      rowShiftYOverride: FRENCH_BOARD_LENGTH - FRENCH_BOARD_LENGTH / Math.SQRT2,
       duplicateABoardOffset: ITALIAN_DUPLICATE_A_OFFSET,
       duplicateBBoardOffset: ITALIAN_DUPLICATE_B_OFFSET
     };
@@ -194,7 +198,7 @@
         const xj = polygon[j].x;
         const yj = polygon[j].y;
         const intersect = ((yi > point.y) !== (yj > point.y))
-          && (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.00001) + xi);
+          && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
         if (intersect) inside = !inside;
       }
       return inside;
@@ -211,7 +215,41 @@
         return false;
       }
 
-      return !polygonHasEdgeIntersection(innerPolygon, outerPolygon);
+      return innerPolygon.every((start, index) => {
+        const end = innerPolygon[(index + 1) % innerPolygon.length];
+        const directionX = end.x - start.x;
+        const directionY = end.y - start.y;
+        const lengthSquared = directionX * directionX + directionY * directionY;
+        if (lengthSquared === 0) return true;
+
+        const intersections = [0, 1];
+        outerPolygon.forEach((edgeStart, edgeIndex) => {
+          const edgeEnd = outerPolygon[(edgeIndex + 1) % outerPolygon.length];
+          if (!segmentsIntersect(start, end, edgeStart, edgeEnd)) return;
+
+          const edgeX = edgeEnd.x - edgeStart.x;
+          const edgeY = edgeEnd.y - edgeStart.y;
+          const determinant = directionX * edgeY - directionY * edgeX;
+          if (Math.abs(determinant) > GEOMETRY_EPSILON) {
+            const position = ((edgeStart.x - start.x) * edgeY - (edgeStart.y - start.y) * edgeX) / determinant;
+            intersections.push(clamp(position, 0, 1));
+          } else {
+            for (const point of [edgeStart, edgeEnd]) {
+              const position = ((point.x - start.x) * directionX + (point.y - start.y) * directionY) / lengthSquared;
+              intersections.push(clamp(position, 0, 1));
+            }
+          }
+        });
+
+        intersections.sort((left, right) => left - right);
+        return intersections.slice(1).every((position, intersectionIndex) => {
+          const midpoint = (intersections[intersectionIndex] + position) / 2;
+          return isPointInPolygon({
+            x: start.x + directionX * midpoint,
+            y: start.y + directionY * midpoint
+          }, outerPolygon);
+        });
+      });
     }
 
     function getPolygonBounds(polygon) {
@@ -414,6 +452,7 @@
         handleMouseDown,
         handleMouseMove,
         handleMouseUp,
+        handleClickCapture,
         renderViewBox,
         gridLines,
         measurements,
@@ -450,6 +489,7 @@
           <svg
             ref={svgRef}
             onClick={handleClick}
+            onClickCapture={handleClickCapture}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -837,24 +877,16 @@
         return { x: transformed.x, y: transformed.y };
       }
 
-      function finalizeMeasurement(endPoint, suppressNextBoardClick = false) {
+      function finalizeMeasurement(endPoint) {
         if (!draftRulerStart) return false;
         const length = Math.hypot(endPoint.x - draftRulerStart.x, endPoint.y - draftRulerStart.y);
         const shouldSave = length >= 15;
 
         if (shouldSave) {
-          setDraftRulerEnd(endPoint);
           setMeasurements(prev => [...prev, { start: draftRulerStart, end: endPoint }]);
-          if (suppressNextBoardClick) {
-            setSuppressBoardClick(true);
-          }
         }
 
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(false);
+        clearDraftMeasurement();
         return shouldSave;
       }
 
@@ -879,6 +911,7 @@
 
       function handleMouseDown(e) {
         if (!isClosed || e.button !== 0) return;
+        setSuppressBoardClick(false);
 
         if (pointerMode === "pan") {
           panStateRef.current = {
@@ -897,6 +930,7 @@
       }
 
       function handleMouseUp(e) {
+        if (e.button !== 0) return;
         if (panStateRef.current) {
           panStateRef.current = null;
           return;
@@ -912,6 +946,12 @@
         }
 
         clearDraftMeasurement();
+      }
+
+      function handleClickCapture(e) {
+        if (!suppressBoardClick) return;
+        e.stopPropagation();
+        setSuppressBoardClick(false);
       }
 
       function handleClick(e) {
@@ -985,11 +1025,9 @@
 
       function clearMeasurements() {
         setMeasurements([]);
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
+        clearDraftMeasurement();
+        setSuppressBoardClick(false);
         panStateRef.current = null;
-        setIsMeasuring(false);
       }
 
       function reset() {
@@ -998,13 +1036,7 @@
         setMousePos(null);
         setToggledPlanks(new Set());
         resetCurrentLayoutSettings();
-        setMeasurements([]);
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setSuppressBoardClick(false);
-        setIsMeasuring(false);
+        clearMeasurements();
         setPointerMode("measure");
         setZoomScale(1);
         setViewBox(DEFAULT_VIEWBOX);
@@ -1052,19 +1084,7 @@
           y: point.y - layoutOffsetY
         }));
 
-        if (!shiftedPoints.length || layoutRotation === 0 || !points.length) {
-          return shiftedPoints;
-        }
-
-        const rad = -layoutRotation * Math.PI / 180;
-        return shiftedPoints.map(point => {
-          const dx = point.x - rotationCenter.x;
-          const dy = point.y - rotationCenter.y;
-          return {
-            x: rotationCenter.x + dx * Math.cos(rad) - dy * Math.sin(rad),
-            y: rotationCenter.y + dx * Math.sin(rad) + dy * Math.cos(rad)
-          };
-        });
+        return inverseRotatePatternPolygon(shiftedPoints);
       }
 
       function handleBoardClick(e, key) {
@@ -1074,14 +1094,9 @@
           return;
         }
 
-        if (suppressBoardClick) {
-          setSuppressBoardClick(false);
-          return;
-        }
-
         if (isMeasuring) {
-          const savedMeasurement = finalizeMeasurement(getSvgCoordinates(e));
-          if (savedMeasurement) return;
+          finalizeMeasurement(getSvgCoordinates(e));
+          return;
         }
 
         setToggledPlanks(prev => {
@@ -1096,26 +1111,19 @@
         if (isClosed) {
           setToggledPlanks(new Set());
         }
-      }, [layoutRotation, layoutOffsetX, layoutOffsetY, isClosed]);
+      }, [layoutRotation, layoutOffsetX, layoutOffsetY, isClosed, selectedLayout]);
 
       useEffect(() => {
         if (pointerMode !== "measure") {
-          setDraftRulerStart(null);
-          setDraftRulerEnd(null);
-          setDragMeasureStart(null);
-          setDragMeasureMoved(false);
-          setIsMeasuring(false);
+          clearDraftMeasurement();
+          setSuppressBoardClick(false);
           panStateRef.current = null;
         }
       }, [pointerMode]);
 
       useEffect(() => {
         setPointerMode("measure");
-        setDraftRulerStart(null);
-        setDraftRulerEnd(null);
-        setDragMeasureStart(null);
-        setDragMeasureMoved(false);
-        setIsMeasuring(false);
+        clearDraftMeasurement();
         setSuppressBoardClick(false);
         panStateRef.current = null;
 
@@ -1124,8 +1132,24 @@
         setViewBox(buildFittedViewBox(points));
       }, [selectedLayout]);
 
+      useEffect(() => {
+        const handleWindowMouseUp = (event) => {
+          if (!svgRef.current?.contains(event.target)) handleMouseUp(event);
+        };
+        const handleWindowBlur = () => {
+          clearDraftMeasurement();
+          setSuppressBoardClick(false);
+          panStateRef.current = null;
+        };
+        window.addEventListener("mouseup", handleWindowMouseUp);
+        window.addEventListener("blur", handleWindowBlur);
+        return () => {
+          window.removeEventListener("mouseup", handleWindowMouseUp);
+          window.removeEventListener("blur", handleWindowBlur);
+        };
+      }, [dragMeasureStart, dragMeasureMoved, draftRulerStart]);
+
       const renderViewBox = useMemo(() => scaleViewBox(viewBox, zoomScale), [viewBox, zoomScale]);
-      const worldUnitsPerScreenPixel = getWorldUnitsPerScreenPixel(renderViewBox);
       const area = isClosed ? polygonArea(rotatedPoints) : 0;
       const areaM2 = (area / 1_000_000).toFixed(2);
       const lastPoint = points[points.length - 1];
@@ -1167,6 +1191,7 @@
         handleMouseDown,
         handleMouseMove,
         handleMouseUp,
+        handleClickCapture,
         closePolygon,
         undoLastPoint,
         clearMeasurements,
@@ -1267,8 +1292,8 @@
 
     function FrenchHerringbonePlanner({ roomState }) {
       const core = usePlannerCore(roomState);
-      const tileSize = 620;
-      const tileWidth = 132;
+      const tileSize = FRENCH_BOARD_LENGTH;
+      const tileWidth = FRENCH_BOARD_WIDTH;
       let planksNeeded = 0;
       let fullPlanks = 0;
       let cutPlanks = 0;
@@ -1283,12 +1308,11 @@
         const colDy = tileWidth / Math.SQRT2;
         const shiftDx = tileWidth / Math.SQRT2;
         const shiftDy = -tileWidth / Math.SQRT2;
-        const localRoomPoints = core.inverseRotatePatternPolygon(core.rotatedPoints);
+        const localRoomPoints = core.inverseTransformPatternPolygon(core.rotatedPoints);
         const localXs = localRoomPoints.map(point => point.x);
         const localYs = localRoomPoints.map(point => point.y);
-        const offsetReach = Math.abs(core.layoutOffsetX) + Math.abs(core.layoutOffsetY);
-        const padding = tileSize + tileWidth * 2.5 + offsetReach;
-        const renderPadding = tileSize * 0.75 + tileWidth + offsetReach * 0.5;
+        const padding = tileSize + tileWidth * 2.5;
+        const renderPadding = tileSize * 0.75 + tileWidth;
         const renderMinX = Math.min(...localXs) - renderPadding;
         const renderMaxX = Math.max(...localXs) + renderPadding;
         const renderMinY = Math.min(...localYs) - renderPadding;
@@ -1372,7 +1396,7 @@
         `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
         `Упаковок: A ${aBoxes}, B ${bBoxes}`,
         `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
-        "Доска: 620 x 132 мм, спил 45°"
+        FRENCH_BOARD_DESCRIPTION
       ];
 
       return <PlannerLayout title="Французская вариант 2" stats={stats} core={core} pattern={pattern} />;
@@ -1380,8 +1404,8 @@
 
     function FrenchClassicPlanner({ roomState }) {
       const core = usePlannerCore(roomState);
-      const tileSize = 620;
-      const tileWidth = 132;
+      const tileSize = FRENCH_BOARD_LENGTH;
+      const tileWidth = FRENCH_BOARD_WIDTH;
       let planksNeeded = 0;
       let fullPlanks = 0;
       let cutPlanks = 0;
@@ -1472,7 +1496,7 @@
         `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
         `Упаковок: A ${aBoxes}, B ${bBoxes}`,
         `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
-        "Доска: 620 x 132 мм, спил 45°"
+        FRENCH_BOARD_DESCRIPTION
       ];
 
       return <PlannerLayout title="Французская Классическая" stats={stats} core={core} pattern={pattern} />;
@@ -1480,8 +1504,8 @@
 
     function FrenchBraidPlanner({ roomState, title = "Царская елка", singlePair = false, singleRow = false, pairBOffsetY = 0, moduleShiftXOverride = null, moduleShiftYOverride = null, rowShiftXOverride = null, rowShiftYOverride = null, previewRowCount = null, previewRowStart = 0, previewRepeatCount = null, previewRepeatStart = 0, previewRowShiftXOverride = null, previewRowShiftYOverride = null, duplicateABoardOffset = null, duplicateBBoardOffset = null }) {
       const core = usePlannerCore(roomState);
-      const tileSize = 620;
-      const tileWidth = 132;
+      const tileSize = FRENCH_BOARD_LENGTH;
+      const tileWidth = FRENCH_BOARD_WIDTH;
       let planksNeeded = 0;
       let fullPlanks = 0;
       let cutPlanks = 0;
@@ -1509,12 +1533,12 @@
         const centerY = (minRoomY + maxRoomY) / 2 - shortSide / 2;
         const offsetReach = Math.abs(core.layoutOffsetX) + Math.abs(core.layoutOffsetY);
         const latticePadding = tileSize * 2 + offsetReach;
-        const latticeBounds = [
+        const latticeBounds = core.inverseTransformPatternPolygon([
           { x: minRoomX - latticePadding, y: minRoomY - latticePadding },
           { x: maxRoomX + latticePadding, y: minRoomY - latticePadding },
           { x: maxRoomX + latticePadding, y: maxRoomY + latticePadding },
           { x: minRoomX - latticePadding, y: maxRoomY + latticePadding }
-        ];
+        ]);
         const determinant = effectiveRowShiftX * moduleShiftY - effectiveRowShiftY * moduleShiftX;
         const fallbackRepeatReachX = Math.ceil((maxRoomX - minRoomX + tileSize * 4) / Math.max(1, Math.abs(moduleShiftX))) + 4;
         const fallbackRepeatReachY = Math.ceil((maxRoomY - minRoomY + tileSize * 4) / Math.max(1, Math.abs(moduleShiftY))) + 4;
@@ -1659,7 +1683,7 @@
         `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
         `Упаковок: A ${aBoxes}, B ${bBoxes}`,
         `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
-        "Доска: 620 x 132 мм, спил 45°"
+        FRENCH_BOARD_DESCRIPTION
       ];
 
       return <PlannerLayout title={title} stats={stats} core={core} pattern={pattern} />;
