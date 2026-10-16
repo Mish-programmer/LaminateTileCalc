@@ -35,7 +35,283 @@
 <body>
 <div id="french-root"></div>
 <script type="text/babel">
-     const { useState, useRef, useMemo, useEffect } = React;
+    const { useState, useRef, useMemo, useEffect, useContext } = React;
+
+    const LANGUAGE_STORAGE_KEY = "laminate-calculator.language";
+    const DEFAULT_LANGUAGE = "ru";
+    const LANGUAGES = [
+      { code: "ru", name: "Русский" },
+      { code: "en", name: "English" },
+      { code: "ka", name: "ქართული" },
+      { code: "az", name: "Azərbaycanca" },
+      { code: "tk", name: "Türkmençe" },
+      { code: "uz", name: "O‘zbekcha" },
+      { code: "hy", name: "Հայերեն" }
+    ];
+    const TRANSLATIONS = {
+      ru: {
+        appTitle: "Калькулятор укладки ламината",
+        language: "Язык",
+        layout: "Варианты укладки",
+        english: "Английская ёлка",
+        classic: "Французская классическая",
+        italian: "Итальянская ёлка",
+        doubleItalian: "Двойная итальянская",
+        braid: "Царская ёлка",
+        variant2: "Французская — вариант 2",
+        angle: "Угол",
+        offsetX: "Смещение по X",
+        offsetY: "Смещение по Y",
+        clearMeasurements: "Удалить измерения",
+        reset: "Сброс",
+        undo: "Назад",
+        closePolygon: "Замкнуть контур",
+        panMode: "Режим перемещения",
+        measureMode: "Режим измерения",
+        zoom: "Масштаб",
+        area: "Площадь: {area} {unit}",
+        boardsEnglish: "Досок: {total} (целых: {full}, подрезанных: {cut})",
+        boardsFrench: "Досок: {total} (A: {a}, B: {b})",
+        boxesFrench: "Упаковок: A {a}, B {b}",
+        fullCut: "Целых: {full}, подрезанных: {cut}",
+        brandBoxes: "{brand}: {boxes} уп. ({area} {unit})",
+        boardDescription: "Доска: {length} × {width} {unit}, спил {angle}°",
+        mm: "мм",
+        m2: "м²"
+      },
+      en: {
+        appTitle: "Laminate Flooring Calculator",
+        language: "Language",
+        layout: "Laying patterns",
+        english: "English herringbone",
+        classic: "Classic French chevron",
+        italian: "Italian herringbone",
+        doubleItalian: "Double Italian herringbone",
+        braid: "Royal herringbone",
+        variant2: "French chevron — variant 2",
+        angle: "Angle",
+        offsetX: "X offset",
+        offsetY: "Y offset",
+        clearMeasurements: "Clear measurements",
+        reset: "Reset",
+        undo: "Undo",
+        closePolygon: "Close outline",
+        panMode: "Pan mode",
+        measureMode: "Measure mode",
+        zoom: "Zoom",
+        area: "Area: {area} {unit}",
+        boardsEnglish: "Boards: {total} (whole: {full}, cut: {cut})",
+        boardsFrench: "Boards: {total} (A: {a}, B: {b})",
+        boxesFrench: "Packs: A {a}, B {b}",
+        fullCut: "Whole: {full}, cut: {cut}",
+        brandBoxes: "{brand}: {boxes} packs ({area} {unit})",
+        boardDescription: "Board: {length} × {width} {unit}, cut angle {angle}°",
+        mm: "mm",
+        m2: "m²"
+      },
+      ka: {
+        appTitle: "ლამინატის დაგების კალკულატორი",
+        language: "ენა",
+        layout: "დაგების ვარიანტები",
+        english: "ინგლისური ნაძვისებური წყობა",
+        classic: "კლასიკური ფრანგული წყობა",
+        italian: "იტალიური ნაძვისებური წყობა",
+        doubleItalian: "ორმაგი იტალიური წყობა",
+        braid: "სამეფო ნაძვისებური წყობა",
+        variant2: "ფრანგული წყობა — ვარიანტი 2",
+        angle: "კუთხე",
+        offsetX: "წანაცვლება X ღერძზე",
+        offsetY: "წანაცვლება Y ღერძზე",
+        clearMeasurements: "გაზომვების წაშლა",
+        reset: "თავიდან დაწყება",
+        undo: "ბოლო წერტილის გაუქმება",
+        closePolygon: "კონტურის შეკვრა",
+        panMode: "გადაადგილების რეჟიმი",
+        measureMode: "გაზომვის რეჟიმი",
+        zoom: "მასშტაბი",
+        area: "ფართობი: {area} {unit}",
+        boardsEnglish: "ფიცრები: {total} (მთლიანი: {full}, მოსაჭრელი: {cut})",
+        boardsFrench: "ფიცრები: {total} (A: {a}, B: {b})",
+        boxesFrench: "შეფუთვები: A {a}, B {b}",
+        fullCut: "მთლიანი: {full}, მოსაჭრელი: {cut}",
+        brandBoxes: "{brand}: {boxes} შეფუთვა ({area} {unit})",
+        boardDescription: "ფიცარი: {length} × {width} {unit}, ჭრის კუთხე {angle}°",
+        mm: "მმ",
+        m2: "მ²"
+      },
+      az: {
+        appTitle: "Laminat döşəmə kalkulyatoru",
+        language: "Dil",
+        layout: "Döşəmə naxışları",
+        english: "İngilis balıqsırtı",
+        classic: "Klassik fransız balıqsırtı",
+        italian: "İtalyan balıqsırtı",
+        doubleItalian: "İkiqat italyan balıqsırtı",
+        braid: "Kral balıqsırtı",
+        variant2: "Fransız balıqsırtı — variant 2",
+        angle: "Bucaq",
+        offsetX: "X üzrə sürüşmə",
+        offsetY: "Y üzrə sürüşmə",
+        clearMeasurements: "Ölçmələri sil",
+        reset: "Sıfırla",
+        undo: "Geri al",
+        closePolygon: "Konturu bağla",
+        panMode: "Yerdəyişmə rejimi",
+        measureMode: "Ölçmə rejimi",
+        zoom: "Miqyas",
+        area: "Sahə: {area} {unit}",
+        boardsEnglish: "Lövhələr: {total} (bütöv: {full}, kəsiləcək: {cut})",
+        boardsFrench: "Lövhələr: {total} (A: {a}, B: {b})",
+        boxesFrench: "Paketlər: A {a}, B {b}",
+        fullCut: "Bütöv: {full}, kəsiləcək: {cut}",
+        brandBoxes: "{brand}: {boxes} paket ({area} {unit})",
+        boardDescription: "Lövhə: {length} × {width} {unit}, kəsim bucağı {angle}°",
+        mm: "mm",
+        m2: "m²"
+      },
+      tk: {
+        appTitle: "Laminat düşemegiň kalkulýatory",
+        language: "Dil",
+        layout: "Düşeme nagyşlary",
+        english: "Iňlis arça nagşy",
+        classic: "Nusgawy fransuz arça nagşy",
+        italian: "Italýan arça nagşy",
+        doubleItalian: "Goşa italýan arça nagşy",
+        braid: "Şa arça nagşy",
+        variant2: "Fransuz arça nagşy — 2-nji görnüş",
+        angle: "Burç",
+        offsetX: "X boýunça süýşürme",
+        offsetY: "Y boýunça süýşürme",
+        clearMeasurements: "Ölçegleri aýyr",
+        reset: "Täzeden başla",
+        undo: "Yza gaýtar",
+        closePolygon: "Kontury ýap",
+        panMode: "Süýşürme tertibi",
+        measureMode: "Ölçeg tertibi",
+        zoom: "Masştab",
+        area: "Meýdan: {area} {unit}",
+        boardsEnglish: "Tagtalar: {total} (bitin: {full}, kesilmeli: {cut})",
+        boardsFrench: "Tagtalar: {total} (A: {a}, B: {b})",
+        boxesFrench: "Gaplamalar: A {a}, B {b}",
+        fullCut: "Bitin: {full}, kesilmeli: {cut}",
+        brandBoxes: "{brand}: {boxes} gaplama ({area} {unit})",
+        boardDescription: "Tagta: {length} × {width} {unit}, kesiş burçy {angle}°",
+        mm: "mm",
+        m2: "m²"
+      },
+      uz: {
+        appTitle: "Laminat yotqizish kalkulyatori",
+        language: "Til",
+        layout: "Yotqizish usullari",
+        english: "Inglizcha archa usuli",
+        classic: "Klassik fransuzcha archa usuli",
+        italian: "Italyancha archa usuli",
+        doubleItalian: "Qo‘sh italyancha archa usuli",
+        braid: "Qirollik archa usuli",
+        variant2: "Fransuzcha archa — 2-variant",
+        angle: "Burchak",
+        offsetX: "X bo‘yicha siljish",
+        offsetY: "Y bo‘yicha siljish",
+        clearMeasurements: "O‘lchovlarni o‘chirish",
+        reset: "Qayta boshlash",
+        undo: "Ortga qaytarish",
+        closePolygon: "Konturni yopish",
+        panMode: "Siljitish rejimi",
+        measureMode: "O‘lchash rejimi",
+        zoom: "Masshtab",
+        area: "Maydon: {area} {unit}",
+        boardsEnglish: "Taxtalar: {total} (butun: {full}, kesiladigan: {cut})",
+        boardsFrench: "Taxtalar: {total} (A: {a}, B: {b})",
+        boxesFrench: "Qadoqlar: A {a}, B {b}",
+        fullCut: "Butun: {full}, kesiladigan: {cut}",
+        brandBoxes: "{brand}: {boxes} qadoq ({area} {unit})",
+        boardDescription: "Taxta: {length} × {width} {unit}, kesish burchagi {angle}°",
+        mm: "mm",
+        m2: "m²"
+      },
+      hy: {
+        appTitle: "Լամինատի տեղադրման հաշվիչ",
+        language: "Լեզու",
+        layout: "Տեղադրման տարբերակներ",
+        english: "Անգլիական եղևնաձև",
+        classic: "Դասական ֆրանսիական եղևնաձև",
+        italian: "Իտալական եղևնաձև",
+        doubleItalian: "Կրկնակի իտալական եղևնաձև",
+        braid: "Արքայական եղևնաձև",
+        variant2: "Ֆրանսիական եղևնաձև — տարբերակ 2",
+        angle: "Անկյուն",
+        offsetX: "Տեղաշարժ X առանցքով",
+        offsetY: "Տեղաշարժ Y առանցքով",
+        clearMeasurements: "Ջնջել չափումները",
+        reset: "Սկսել նորից",
+        undo: "Հետարկել",
+        closePolygon: "Փակել եզրագիծը",
+        panMode: "Տեղաշարժման ռեժիմ",
+        measureMode: "Չափման ռեժիմ",
+        zoom: "Մասշտաբ",
+        area: "Մակերես՝ {area} {unit}",
+        boardsEnglish: "Տախտակներ՝ {total} (ամբողջական՝ {full}, կտրման ենթակա՝ {cut})",
+        boardsFrench: "Տախտակներ՝ {total} (A՝ {a}, B՝ {b})",
+        boxesFrench: "Փաթեթներ՝ A {a}, B {b}",
+        fullCut: "Ամբողջական՝ {full}, կտրման ենթակա՝ {cut}",
+        brandBoxes: "{brand}՝ {boxes} փաթեթ ({area} {unit})",
+        boardDescription: "Տախտակ՝ {length} × {width} {unit}, կտրման անկյուն՝ {angle}°",
+        mm: "մմ",
+        m2: "մ²"
+      }
+    };
+
+    function readSavedLanguage() {
+      try {
+        const savedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+        if (LANGUAGES.some(language => language.code === savedLanguage)) return savedLanguage;
+      } catch {}
+      return DEFAULT_LANGUAGE;
+    }
+
+    function createLocalization(language) {
+      const dictionary = TRANSLATIONS[language];
+      const numberFormatters = new Map();
+      const formatNumber = (value, digits = 0) => {
+        if (!numberFormatters.has(digits)) {
+          numberFormatters.set(digits, new Intl.NumberFormat(language, {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+            useGrouping: false
+          }));
+        }
+        return numberFormatters.get(digits).format(Number(value));
+      };
+      const t = (key, values = {}) => {
+        const template = dictionary[key] ?? TRANSLATIONS[DEFAULT_LANGUAGE][key] ?? key;
+        return template.replace(/\{(\w+)\}/g, (placeholder, name) => {
+          const value = values[name];
+          return typeof value === "number" ? formatNumber(value) : (value ?? placeholder);
+        });
+      };
+      return { t, formatNumber };
+    }
+
+    const LanguageContext = React.createContext(createLocalization(DEFAULT_LANGUAGE));
+
+    function useLanguage() {
+      return useContext(LanguageContext);
+    }
+
+    function buildFrenchStats(core, counts, { t, formatNumber }) {
+      return [
+        t("area", { area: formatNumber(core.areaM2, 2), unit: t("m2") }),
+        t("boardsFrench", { total: counts.total, a: counts.a, b: counts.b }),
+        t("boxesFrench", { a: Math.ceil(counts.a / 12), b: Math.ceil(counts.b / 12) }),
+        t("fullCut", { full: counts.full, cut: counts.cut }),
+        t("boardDescription", {
+          length: FRENCH_BOARD_LENGTH,
+          width: FRENCH_BOARD_WIDTH,
+          unit: t("mm"),
+          angle: FRENCH_BOARD_CUT_ANGLE
+        })
+      ];
+    }
 
     const VIEWPORT_WIDTH = 800;
     const VIEWPORT_HEIGHT = 600;
@@ -50,13 +326,12 @@
     const FRENCH_BOARD_LENGTH = 620;
     const FRENCH_BOARD_WIDTH = 132;
     const FRENCH_BOARD_CUT_ANGLE = 45;
-    const FRENCH_BOARD_DESCRIPTION = `Доска: ${FRENCH_BOARD_LENGTH} x ${FRENCH_BOARD_WIDTH} мм, спил ${FRENCH_BOARD_CUT_ANGLE}°`;
     const ITALIAN_LAYOUT_ROTATION = -23;
     const ITALIAN_PAIR_B_OFFSET_Y = FRENCH_BOARD_LENGTH - FRENCH_BOARD_WIDTH * Math.SQRT2;
     const ITALIAN_DUPLICATE_A_OFFSET = { x: 0, y: FRENCH_BOARD_WIDTH * Math.SQRT2 };
     const ITALIAN_DUPLICATE_B_OFFSET = { x: FRENCH_BOARD_WIDTH, y: -FRENCH_BOARD_WIDTH };
     const ITALIAN_BRAID_PROPS = {
-      title: "Итальянская елка",
+      titleKey: "italian",
       pairBOffsetY: ITALIAN_PAIR_B_OFFSET_Y,
       moduleShiftXOverride: FRENCH_BOARD_WIDTH,
       moduleShiftYOverride: -FRENCH_BOARD_WIDTH * Math.SQRT2 - FRENCH_BOARD_WIDTH,
@@ -64,7 +339,7 @@
       rowShiftYOverride: FRENCH_BOARD_LENGTH - FRENCH_BOARD_WIDTH - FRENCH_BOARD_LENGTH / Math.SQRT2 - FRENCH_BOARD_WIDTH * Math.SQRT2
     };
     const DOUBLE_ITALIAN_BRAID_PROPS = {
-      title: "Двойная Итальянская",
+      titleKey: "doubleItalian",
       pairBOffsetY: ITALIAN_PAIR_B_OFFSET_Y,
       moduleShiftXOverride: FRENCH_BOARD_WIDTH * 2,
       moduleShiftYOverride: -FRENCH_BOARD_WIDTH * 2 * (Math.SQRT2 + 1),
@@ -381,6 +656,7 @@
     }
 
     function PlannerToolbar({ core }) {
+      const { t } = useLanguage();
       const {
         isClosed,
         layoutRotation,
@@ -399,10 +675,11 @@
       return (
         <div className="flex flex-wrap items-center gap-3 mb-2">
           <div className="flex items-center gap-2">
-            <span>Угол:</span>
+            <span>{t("angle")}:</span>
             <input
               id="layout-rotation"
               name="layoutRotation"
+              aria-label={t("angle")}
               type="number"
               min="-180"
               max="180"
@@ -416,6 +693,7 @@
             <input
               id="layout-offset-x"
               name="layoutOffsetX"
+              aria-label={t("offsetX")}
               type="number"
               min={-MAX_LAYOUT_OFFSET}
               max={MAX_LAYOUT_OFFSET}
@@ -428,6 +706,7 @@
             <input
               id="layout-offset-y"
               name="layoutOffsetY"
+              aria-label={t("offsetY")}
               type="number"
               min={-MAX_LAYOUT_OFFSET}
               max={MAX_LAYOUT_OFFSET}
@@ -437,15 +716,16 @@
               onChange={(e) => setLayoutOffsetY(parseFloat(e.target.value) || 0)}
             />
           </div>
-          <button onClick={clearMeasurements} className="bg-red-100 px-2 py-1 rounded">Удалить измерения</button>
-          <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">Сброс</button>
-          <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">Назад</button>
-          <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">Замкнуть контур</button>
+          <button onClick={clearMeasurements} className="bg-red-100 px-2 py-1 rounded">{t("clearMeasurements")}</button>
+          <button onClick={reset} className="bg-gray-200 px-2 py-1 rounded">{t("reset")}</button>
+          <button onClick={undoLastPoint} disabled={points.length === 0 || isClosed} className="bg-yellow-500 text-white px-2 py-1 rounded">{t("undo")}</button>
+          <button onClick={closePolygon} disabled={points.length < 3 || isClosed} className="bg-blue-500 text-white px-2 py-1 rounded">{t("closePolygon")}</button>
         </div>
       );
     }
 
     function PlannerCanvas({ core, pattern }) {
+      const { t, formatNumber } = useLanguage();
       const {
         svgRef,
         handleClick,
@@ -557,7 +837,7 @@
                       strokeWidth={edgeLabelOutline}
                       paintOrder="stroke"
                     >
-                      {`${length.toFixed(0)} мм`}
+                      {`${formatNumber(length)} ${t("mm")}`}
                     </text>
                   </g>
                 );
@@ -582,7 +862,7 @@
                     strokeWidth={edgeLabelOutline}
                     paintOrder="stroke"
                   >
-                    {`${rulerLength.toFixed(0)} мм`}
+                    {`${formatNumber(rulerLength)} ${t("mm")}`}
                   </text>
                 </g>
               )}
@@ -619,7 +899,7 @@
                       pointerEvents="none"
                       transform={`rotate(${edgeMetrics.labelAngle} ${edgeMetrics.textX} ${edgeMetrics.textY})`}
                     >
-                      {`${edgeMetrics.distance.toFixed(0)} мм`}
+                      {`${formatNumber(edgeMetrics.distance)} ${t("mm")}`}
                     </text>
                   </g>
                 );
@@ -649,7 +929,7 @@
                         pointerEvents="none"
                         transform={`rotate(${hintMetrics.labelAngle} ${hintMetrics.textX} ${hintMetrics.textY})`}
                       >
-                        {`${hintMetrics.distance.toFixed(0)} мм, ${hintMetrics.angle.toFixed(1)}°`}
+                        {`${formatNumber(hintMetrics.distance)} ${t("mm")}, ${formatNumber(hintMetrics.angle, 1)}°`}
                       </text>
                       <text
                         x={renderViewBox.minX + renderViewBox.width - hintPanelInset}
@@ -662,10 +942,10 @@
                         paintOrder="stroke"
                       >
                         <tspan x={renderViewBox.minX + renderViewBox.width - hintPanelInset} dy="0">
-                          {`dx: ${hintMetrics.dx.toFixed(0)} мм`}
+                          {`dx: ${formatNumber(hintMetrics.dx)} ${t("mm")}`}
                         </tspan>
                         <tspan x={renderViewBox.minX + renderViewBox.width - hintPanelInset} dy={hintPanelGap}>
-                          {`dy: ${hintMetrics.dy.toFixed(0)} мм`}
+                          {`dy: ${formatNumber(hintMetrics.dy)} ${t("mm")}`}
                         </tspan>
                       </text>
                     </>
@@ -695,8 +975,8 @@
           >
             <button
               type="button"
-              aria-label="Режим перемещения"
-              title="Режим перемещения"
+              aria-label={t("panMode")}
+              title={t("panMode")}
               onClick={() => setPointerMode("pan")}
               style={{
                 width: "28px",
@@ -750,8 +1030,8 @@
             </button>
             <button
               type="button"
-              aria-label="Режим измерения"
-              title="Режим измерения"
+              aria-label={t("measureMode")}
+              title={t("measureMode")}
               onClick={() => setPointerMode("measure")}
               style={{
                 width: "28px",
@@ -784,6 +1064,7 @@
             >
               <input
                 type="range"
+                aria-label={t("zoom")}
                 min={MIN_ZOOM_SCALE}
                 max={MAX_ZOOM_SCALE}
                 step={ZOOM_STEP}
@@ -1213,6 +1494,7 @@
 
     function EnglishHerringbonePlanner({ roomState }) {
       const core = usePlannerCore(roomState);
+      const { t, formatNumber } = useLanguage();
       const tileSize = 694;
       const tileWidth = 132;
       let planksNeeded = 0;
@@ -1281,17 +1563,18 @@
       const peaksBoxes = Math.ceil(planksNeeded / 12);
       const waterfallsBoxes = Math.ceil(planksNeeded / 15);
       const stats = [
-        `Площадь: ${core.areaM2} м²`,
-        `Досок: ${planksNeeded} (целых: ${fullPlanks}, рез: ${cutPlanks})`,
-        `PEAKS: ${peaksBoxes} уп. (${(peaksBoxes * 1.1).toFixed(3)} м²)`,
-        `WATERFALLS: ${waterfallsBoxes} уп. (${(waterfallsBoxes * 1.374).toFixed(3)} м²)`
+        t("area", { area: formatNumber(core.areaM2, 2), unit: t("m2") }),
+        t("boardsEnglish", { total: planksNeeded, full: fullPlanks, cut: cutPlanks }),
+        t("brandBoxes", { brand: "PEAKS", boxes: peaksBoxes, area: formatNumber(peaksBoxes * 1.1, 3), unit: t("m2") }),
+        t("brandBoxes", { brand: "WATERFALLS", boxes: waterfallsBoxes, area: formatNumber(waterfallsBoxes * 1.374, 3), unit: t("m2") })
       ];
 
-      return <PlannerLayout title="Английская елка" stats={stats} core={core} pattern={pattern} />;
+      return <PlannerLayout title={t("english")} stats={stats} core={core} pattern={pattern} />;
     }
 
     function FrenchHerringbonePlanner({ roomState }) {
       const core = usePlannerCore(roomState);
+      const localization = useLanguage();
       const tileSize = FRENCH_BOARD_LENGTH;
       const tileWidth = FRENCH_BOARD_WIDTH;
       let planksNeeded = 0;
@@ -1389,21 +1672,16 @@
         }
       }
 
-      const aBoxes = Math.ceil(aPlanks / 12);
-      const bBoxes = Math.ceil(bPlanks / 12);
-      const stats = [
-        `Площадь: ${core.areaM2} м²`,
-        `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
-        `Упаковок: A ${aBoxes}, B ${bBoxes}`,
-        `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
-        FRENCH_BOARD_DESCRIPTION
-      ];
+      const stats = buildFrenchStats(core, {
+        total: planksNeeded, a: aPlanks, b: bPlanks, full: fullPlanks, cut: cutPlanks
+      }, localization);
 
-      return <PlannerLayout title="Французская вариант 2" stats={stats} core={core} pattern={pattern} />;
+      return <PlannerLayout title={localization.t("variant2")} stats={stats} core={core} pattern={pattern} />;
     }
 
     function FrenchClassicPlanner({ roomState }) {
       const core = usePlannerCore(roomState);
+      const localization = useLanguage();
       const tileSize = FRENCH_BOARD_LENGTH;
       const tileWidth = FRENCH_BOARD_WIDTH;
       let planksNeeded = 0;
@@ -1489,21 +1767,16 @@
         }
       }
 
-      const aBoxes = Math.ceil(aPlanks / 12);
-      const bBoxes = Math.ceil(bPlanks / 12);
-      const stats = [
-        `Площадь: ${core.areaM2} м²`,
-        `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
-        `Упаковок: A ${aBoxes}, B ${bBoxes}`,
-        `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
-        FRENCH_BOARD_DESCRIPTION
-      ];
+      const stats = buildFrenchStats(core, {
+        total: planksNeeded, a: aPlanks, b: bPlanks, full: fullPlanks, cut: cutPlanks
+      }, localization);
 
-      return <PlannerLayout title="Французская Классическая" stats={stats} core={core} pattern={pattern} />;
+      return <PlannerLayout title={localization.t("classic")} stats={stats} core={core} pattern={pattern} />;
     }
 
-    function FrenchBraidPlanner({ roomState, title = "Царская елка", singlePair = false, singleRow = false, pairBOffsetY = 0, moduleShiftXOverride = null, moduleShiftYOverride = null, rowShiftXOverride = null, rowShiftYOverride = null, previewRowCount = null, previewRowStart = 0, previewRepeatCount = null, previewRepeatStart = 0, previewRowShiftXOverride = null, previewRowShiftYOverride = null, duplicateABoardOffset = null, duplicateBBoardOffset = null }) {
+    function FrenchBraidPlanner({ roomState, titleKey = "braid", singlePair = false, singleRow = false, pairBOffsetY = 0, moduleShiftXOverride = null, moduleShiftYOverride = null, rowShiftXOverride = null, rowShiftYOverride = null, previewRowCount = null, previewRowStart = 0, previewRepeatCount = null, previewRepeatStart = 0, previewRowShiftXOverride = null, previewRowShiftYOverride = null, duplicateABoardOffset = null, duplicateBBoardOffset = null }) {
       const core = usePlannerCore(roomState);
+      const localization = useLanguage();
       const tileSize = FRENCH_BOARD_LENGTH;
       const tileWidth = FRENCH_BOARD_WIDTH;
       let planksNeeded = 0;
@@ -1676,20 +1949,17 @@
         }
       }
 
-      const aBoxes = Math.ceil(aPlanks / 12);
-      const bBoxes = Math.ceil(bPlanks / 12);
-      const stats = [
-        `Площадь: ${core.areaM2} м²`,
-        `Досок: ${planksNeeded} (A: ${aPlanks}, B: ${bPlanks})`,
-        `Упаковок: A ${aBoxes}, B ${bBoxes}`,
-        `Целых: ${fullPlanks}, рез: ${cutPlanks}`,
-        FRENCH_BOARD_DESCRIPTION
-      ];
+      const stats = buildFrenchStats(core, {
+        total: planksNeeded, a: aPlanks, b: bPlanks, full: fullPlanks, cut: cutPlanks
+      }, localization);
 
-      return <PlannerLayout title={title} stats={stats} core={core} pattern={pattern} />;
+      return <PlannerLayout title={localization.t(titleKey)} stats={stats} core={core} pattern={pattern} />;
     }
 
     function FrenchLayoutsHub() {
+      const [language, setLanguage] = useState(readSavedLanguage);
+      const localization = useMemo(() => createLocalization(language), [language]);
+      const { t } = localization;
       const [selectedLayout, setSelectedLayout] = useState("english");
       const [points, setPoints] = useState([]);
       const [isClosed, setIsClosed] = useState(false);
@@ -1703,6 +1973,14 @@
       const [suppressBoardClick, setSuppressBoardClick] = useState(false);
       const [isMeasuring, setIsMeasuring] = useState(false);
       const [viewBox, setViewBox] = useState(DEFAULT_VIEWBOX);
+
+      useEffect(() => {
+        document.documentElement.lang = language;
+        document.title = t("appTitle");
+        try {
+          window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+        } catch {}
+      }, [language, localization]);
 
       const currentLayoutSettings = layoutSettings[selectedLayout] || DEFAULT_LAYOUT_SETTINGS[selectedLayout];
       const layoutRotation = currentLayoutSettings.rotation;
@@ -1764,30 +2042,41 @@
       };
 
       return (
+        <LanguageContext.Provider value={localization}>
         <div>
-          <div className="mb-4" style={{ maxWidth: "360px" }}>
-            <label htmlFor="layout-variant" style={{ marginBottom: "6px", fontWeight: "bold" }}>
-              Варианты укладки:
-            </label>
-            <select
-              id="layout-variant"
-              name="layoutVariant"
-              value={selectedLayout}
-              onChange={(e) => setSelectedLayout(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                fontSize: "16px",
-                marginTop: "6px"
-              }}
-            >
-              <option value="english">Английская елка</option>
-              <option value="classic">Французская Классическая</option>
-              <option value="italian">Итальянская елка</option>
-              <option value="doubleItalian">Двойная Итальянская</option>
-              <option value="braid">Царская елка</option>
-              <option value="variant2">Французская вариант 2</option>
-            </select>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "12px 24px", alignItems: "flex-end", maxWidth: VIEWPORT_WIDTH, marginBottom: "16px" }}>
+            <div style={{ flex: "1 1 360px", maxWidth: "480px", minWidth: 0 }}>
+              <label htmlFor="layout-variant" style={{ marginBottom: "6px", fontWeight: "bold" }}>
+                {t("layout")}:
+              </label>
+              <select
+                id="layout-variant"
+                name="layoutVariant"
+                value={selectedLayout}
+                onChange={(e) => setSelectedLayout(e.target.value)}
+                style={{ width: "100%", padding: "8px 10px", fontSize: "16px" }}
+              >
+                {["english", "classic", "italian", "doubleItalian", "braid", "variant2"].map(layout => (
+                  <option key={layout} value={layout}>{t(layout)}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: "0 1 220px", minWidth: 0 }}>
+              <label htmlFor="interface-language" style={{ marginBottom: "6px", fontWeight: "bold" }}>
+                {t("language")}{language !== "en" ? " / Language" : ""}:
+              </label>
+              <select
+                id="interface-language"
+                name="interfaceLanguage"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                style={{ width: "100%", padding: "8px 10px", fontSize: "16px" }}
+              >
+                {LANGUAGES.map(option => (
+                  <option key={option.code} value={option.code} lang={option.code}>{option.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {selectedLayout === "english" && <EnglishHerringbonePlanner roomState={roomState} />}
@@ -1807,6 +2096,7 @@
           )}
           {selectedLayout === "braid" && <FrenchBraidPlanner roomState={roomState} />}
         </div>
+        </LanguageContext.Provider>
       );
     }
 

@@ -26,6 +26,17 @@ Layout components: `EnglishHerringbonePlanner`, `FrenchClassicPlanner`, `FrenchH
 
 Top-level switcher: `FrenchLayoutsHub`.
 
+## Interface Languages
+
+- Supported languages: Russian (`ru`), English (`en`), Georgian (`ka`), Azerbaijani (`az`), Turkmen (`tk`), Uzbek (`uz`, Latin script), and Armenian (`hy`).
+- `LANGUAGES` contains native language names for the selector; `TRANSLATIONS` contains all UI messages and layout names. Keep the same keys and interpolation placeholders in every dictionary.
+- `createLocalization` formats messages and numbers with `Intl.NumberFormat`. Only display values are localized; numeric input values and geometry remain numbers.
+- `LanguageContext` and `useLanguage` supply translations to planners, toolbar, and SVG labels. `buildFrenchStats` shares the translated French board statistics.
+- `FrenchLayoutsHub` owns the language preference, updates the document title and HTML `lang`, and stores the language in `localStorage` under `laminate-calculator.language`.
+- Russian is the default when no valid preference exists. If browser storage is blocked, language switching still works for the current session.
+- Switching languages must not remount planners or reset the room, layout, manual board overrides, measurements, pointer mode, zoom, or offsets.
+- Translations are bundled in the HTML; no external translation service or additional dependency is used.
+
 ## Supported Modes
 
 Dropdown order:
@@ -46,7 +57,7 @@ Common French board constants are at the beginning of the script:
 - `FRENCH_BOARD_LENGTH = 620` mm.
 - `FRENCH_BOARD_WIDTH = 132` mm.
 - `FRENCH_BOARD_CUT_ANGLE = 45` degrees.
-- `FRENCH_BOARD_DESCRIPTION` generates the shared UI label.
+- `buildFrenchStats` generates the localized board description from these constants.
 
 Length and width feed all French layout planners, including Italian module steps and duplicated boards. English boards retain their independent 694 × 132 mm dimensions.
 
@@ -104,6 +115,9 @@ Browser regression checklist:
 - Pan and release outside the SVG; return to the canvas and check that panning stopped.
 - Clear measurements, reset, and switch layouts during interaction.
 - Change zoom and verify label sizes and auto-fit behavior.
+- Switch through all seven languages with a closed room, a manually toggled board, a saved measurement, and non-default zoom/offsets; only text and number formatting should change.
+- Check translated layout names, statistics, tooltips, accessible input labels, ruler units, document title, and the language selector using the keyboard.
+- Reload after choosing a language and verify the preference is restored. Repeat with browser storage disabled; the calculator should remain usable.
 
 ## Maintenance
 
