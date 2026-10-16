@@ -29,7 +29,8 @@ Top-level switcher: `FrenchLayoutsHub`.
 ## Interface Languages
 
 - Supported languages: Russian (`ru`), English (`en`), Georgian (`ka`), Azerbaijani (`az`), Turkmen (`tk`), Uzbek (`uz`, Latin script), and Armenian (`hy`).
-- `LANGUAGES` contains native language names for the selector; `TRANSLATIONS` contains all UI messages and layout names. Keep the same keys and interpolation placeholders in every dictionary.
+- `LANGUAGES` contains language codes and native names; `TRANSLATIONS` contains all UI messages and layout names. Keep the same keys and interpolation placeholders in every dictionary.
+- `LanguageSelector` shows compact uppercase codes and built-in SVG country flags (UK for English); native names remain in tooltips and accessible labels. It supports Tab, arrow keys, Home/End, and Escape, and closes on selection, focus leaving, or an outside click. Flags require no network requests or emoji-font support.
 - `createLocalization` formats messages and numbers with `Intl.NumberFormat`. Only display values are localized; numeric input values and geometry remain numbers.
 - `LanguageContext` and `useLanguage` supply translations to planners, toolbar, and SVG labels. `buildFrenchStats` shares the translated French board statistics.
 - `FrenchLayoutsHub` owns the language preference, updates the document title and HTML `lang`, and stores the language in `localStorage` under `laminate-calculator.language`.

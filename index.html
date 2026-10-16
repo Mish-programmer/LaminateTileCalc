@@ -30,6 +30,14 @@
       }
     }
 .cls-1 {fill: #3f4f75;} .cls-2 {fill: #80cfbe;} .cls-3 {fill: #fff;}
+    .language-switcher summary::-webkit-details-marker {
+      display: none;
+    }
+    .language-switcher summary:focus-visible,
+    .language-switcher button:focus-visible {
+      outline: 2px solid #2563eb;
+      outline-offset: 2px;
+    }
 </style>
 </head>
 <body>
@@ -296,6 +304,132 @@
 
     function useLanguage() {
       return useContext(LanguageContext);
+    }
+
+    function LanguageFlag({ language }) {
+      const star = "0,-3 0.7,-1 2.9,-1 1.1,0.4 1.8,2.4 0,1.2 -1.8,2.4 -1.1,0.4 -2.9,-1 -0.7,-1";
+      const flags = {
+        ru: <><path fill="#fff" d="M0 0h36v8H0z" /><path fill="#0039a6" d="M0 8h36v8H0z" /><path fill="#d52b1e" d="M0 16h36v8H0z" /></>,
+        en: <>
+          <path fill="#012169" d="M0 0h36v24H0z" />
+          <path stroke="#fff" strokeWidth="5" d="m0 0 36 24M36 0 0 24" />
+          <path stroke="#c8102e" strokeWidth="2" d="m0 0 36 24M36 0 0 24" />
+          <path stroke="#fff" strokeWidth="8" d="M18 0v24M0 12h36" />
+          <path stroke="#c8102e" strokeWidth="4.5" d="M18 0v24M0 12h36" />
+        </>,
+        ka: <>
+          <path fill="#fff" d="M0 0h36v24H0z" />
+          <path stroke="#e31b23" strokeWidth="4" d="M18 0v24M0 12h36" />
+          {[[8, 5], [28, 5], [8, 19], [28, 19]].map(([centerX, centerY]) => (
+            <path key={`${centerX}-${centerY}`} fill="#e31b23" transform={`translate(${centerX} ${centerY})`} d="M-1-3h2v2h2v2H1v2h-2V1h-2v-2h2z" />
+          ))}
+        </>,
+        az: <>
+          <path fill="#00b5e2" d="M0 0h36v8H0z" /><path fill="#ef3340" d="M0 8h36v8H0z" /><path fill="#509e2f" d="M0 16h36v8H0z" />
+          <circle cx="16" cy="12" r="3.3" fill="#fff" /><circle cx="17" cy="12" r="2.7" fill="#ef3340" />
+          <path fill="#fff" transform="translate(22 12)" d="M0-3 .6-1.5 2.1-2.1 1.5-.6 3 0 1.5.6 2.1 2.1 .6 1.5 0 3-.6 1.5-2.1 2.1-1.5.6-3 0-1.5-.6-2.1-2.1-.6-1.5z" />
+        </>,
+        tk: <>
+          <path fill="#00843d" d="M0 0h36v24H0z" /><path fill="#a6192e" d="M5 0h7v24H5z" />
+          {[2.5, 7, 11.5, 16, 20.5].map(centerY => (
+            <path key={centerY} fill="#d4b46a" stroke="#fff" strokeWidth="0.25" transform={`translate(8.5 ${centerY})`} d="m0-1.8 2.5 1.8L0 1.8-2.5 0zM-1-1h2v2h-2z" fillRule="evenodd" />
+          ))}
+          <circle cx="24" cy="6" r="3.8" fill="#fff" /><circle cx="25.4" cy="4.9" r="3.4" fill="#00843d" />
+          {[[19, 3], [18, 6], [19, 9], [22, 11], [25, 11]].map(([centerX, centerY]) => (
+            <polygon key={`${centerX}-${centerY}`} points={star} fill="#fff" transform={`translate(${centerX} ${centerY}) scale(.25)`} />
+          ))}
+        </>,
+        uz: <>
+          <path fill="#0099b5" d="M0 0h36v8H0z" /><path fill="#fff" d="M0 8h36v8H0z" /><path fill="#1eb53a" d="M0 16h36v8H0z" />
+          <path stroke="#ce1126" strokeWidth="0.7" d="M0 8h36M0 16h36" />
+          <circle cx="5" cy="4" r="3" fill="#fff" /><circle cx="6.1" cy="4" r="2.5" fill="#0099b5" />
+          {[3, 4, 5].flatMap((count, row) => Array.from({ length: count }, (_, column) => (
+            <polygon key={`${row}-${column}`} points={star} fill="#fff" transform={`translate(${17 - column * 2} ${2 + row * 2}) scale(.18)`} />
+          )))}
+        </>,
+        hy: <><path fill="#d90012" d="M0 0h36v8H0z" /><path fill="#0033a0" d="M0 8h36v8H0z" /><path fill="#f2a800" d="M0 16h36v8H0z" /></>
+      };
+      return (
+        <svg width="24" height="16" viewBox="0 0 36 24" aria-hidden="true" focusable="false" style={{ display: "block", flexShrink: 0, borderRadius: "2px", boxShadow: "0 0 0 1px rgba(0,0,0,.12)" }}>
+          {flags[language]}
+        </svg>
+      );
+    }
+
+    function LanguageSelector({ language, onChange }) {
+      const { t } = useLanguage();
+      const detailsRef = useRef(null);
+      const selected = LANGUAGES.find(option => option.code === language);
+
+      useEffect(() => {
+        const closeOutside = (event) => {
+          if (detailsRef.current && !detailsRef.current.contains(event.target)) detailsRef.current.open = false;
+        };
+        document.addEventListener("pointerdown", closeOutside);
+        return () => document.removeEventListener("pointerdown", closeOutside);
+      }, []);
+
+      function handleKeyDown(event) {
+        const details = detailsRef.current;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          details.open = false;
+          details.querySelector("summary").focus();
+          return;
+        }
+        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        details.open = true;
+        const buttons = Array.from(details.querySelectorAll("button"));
+        const currentIndex = buttons.indexOf(document.activeElement);
+        const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+          : currentIndex === -1 ? (event.key === "ArrowUp" ? buttons.length - 1 : 0)
+          : (currentIndex + (event.key === "ArrowUp" ? -1 : 1) + buttons.length) % buttons.length;
+        buttons[nextIndex].focus();
+      }
+
+      return (
+        <details
+          ref={detailsRef}
+          className="language-switcher"
+          onKeyDown={handleKeyDown}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
+          }}
+          style={{ position: "relative", flex: "0 0 auto", fontSize: "14px" }}
+        >
+          <summary
+            aria-label={`${t("language")}: ${selected.name}`}
+            title={`${t("language")}: ${selected.name}`}
+            style={{ display: "flex", alignItems: "center", gap: "7px", padding: "9px 10px", border: "1px solid #9ca3af", borderRadius: "5px", background: "#fff", cursor: "pointer", listStyle: "none" }}
+          >
+            <LanguageFlag language={language} />
+            <span>{language.toUpperCase()}</span>
+            <span aria-hidden="true" style={{ fontSize: "10px", color: "#64748b" }}>▼</span>
+          </summary>
+          <div role="group" aria-label={t("language")} style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, minWidth: "100%", padding: "4px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#fff", boxShadow: "0 4px 12px rgba(15,23,42,.15)", zIndex: 10 }}>
+            {LANGUAGES.map(option => (
+              <button
+                key={option.code}
+                type="button"
+                lang={option.code}
+                aria-label={option.name}
+                aria-pressed={language === option.code}
+                title={option.name}
+                onClick={() => {
+                  onChange(option.code);
+                  detailsRef.current.open = false;
+                  detailsRef.current.querySelector("summary").focus();
+                }}
+                style={{ display: "flex", alignItems: "center", gap: "9px", width: "100%", padding: "8px", border: 0, borderRadius: "3px", background: language === option.code ? "#dbeafe" : "#fff", color: "#111827", font: "inherit", cursor: "pointer", textAlign: "left" }}
+              >
+                <LanguageFlag language={option.code} />
+                <span>{option.code.toUpperCase()}</span>
+              </button>
+            ))}
+          </div>
+        </details>
+      );
     }
 
     function buildFrenchStats(core, counts, { t, formatNumber }) {
@@ -2061,22 +2195,7 @@
                 ))}
               </select>
             </div>
-            <div style={{ flex: "0 1 220px", minWidth: 0 }}>
-              <label htmlFor="interface-language" style={{ marginBottom: "6px", fontWeight: "bold" }}>
-                {t("language")}{language !== "en" ? " / Language" : ""}:
-              </label>
-              <select
-                id="interface-language"
-                name="interfaceLanguage"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                style={{ width: "100%", padding: "8px 10px", fontSize: "16px" }}
-              >
-                {LANGUAGES.map(option => (
-                  <option key={option.code} value={option.code} lang={option.code}>{option.name}</option>
-                ))}
-              </select>
-            </div>
+            <LanguageSelector language={language} onChange={setLanguage} />
           </div>
 
           {selectedLayout === "english" && <EnglishHerringbonePlanner roomState={roomState} />}
