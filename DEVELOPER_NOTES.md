@@ -4,7 +4,7 @@
 
 This is a standalone browser-based laminate layout calculator.
 
-- Entry point: [laminate_calculator_all_in_one (2).html](<laminate_calculator_all_in_one (2).html>).
+- Entry point: [index.html](index.html).
 - Local dependencies: `react.development.js`, `react-dom.development.js`, `babel.min.js`.
 - JSX is compiled in the browser by the bundled Babel. Keep this launch method; no build system is required.
 - No backend, API, or database.
