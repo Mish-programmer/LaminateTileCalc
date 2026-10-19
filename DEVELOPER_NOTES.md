@@ -12,6 +12,8 @@ This is a standalone browser-based laminate layout calculator.
 
 ## Code Map
 
+Cloudflare Web Analytics is loaded once before `</body>` using the site owner's supplied module snippet. Its `data-cf-beacon` token is a public site identifier, not an API credential. Analytics requires network access; the calculator does not depend on the beacon. After deployment, check incoming visits in the owner's Cloudflare Web Analytics dashboard. No custom tracking events or room geometry are sent by the calculator code.
+
 Geometry:
 
 - `pointOnSegment`, `segmentsIntersect`, `polygonsIntersect`
